@@ -1,0 +1,85 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "A student user in the system",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "description": "Firebase Auth UID" },
+        "credits": { "type": "number", "description": "Remaining AI credits" },
+        "schoolId": { "type": "string", "description": "ID of the school the student is connected to" },
+        "createdAt": { "type": "string", "format": "date-time", "description": "When the user was created" }
+      },
+      "required": ["uid", "credits"]
+    },
+    "School": {
+      "title": "School",
+      "description": "A registered school in the system",
+      "type": "object",
+      "properties": {
+        "school_id": { "type": "string", "description": "Unique school ID" },
+        "school_name": { "type": "string", "description": "Name of the school" },
+        "school_slug": { "type": "string", "description": "URL-friendly name for the school" },
+        "referral_code": { "type": "string", "description": "Code for students to join" },
+        "password": { "type": "string", "description": "Admin password for the school dashboard" },
+        "total_students": { "type": "number", "description": "Number of connected students" },
+        "total_earnings": { "type": "number", "description": "Total earnings from student top-ups" },
+        "createdAt": { "type": "string", "format": "date-time", "description": "When the school was registered" }
+      },
+      "required": ["school_id", "school_name", "school_slug", "referral_code", "password"]
+    },
+    "Activity": {
+      "title": "Activity",
+      "description": "System-wide activity log",
+      "type": "object",
+      "properties": {
+        "type": { "type": "string", "description": "Type of activity (e.g., topup, registration)" },
+        "details": { "type": "string", "description": "Description of the activity" },
+        "timestamp": { "type": "number", "description": "Unix timestamp" }
+      }
+    },
+    "Withdrawal": {
+      "title": "Withdrawal",
+      "description": "School withdrawal request",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Withdrawal ID" },
+        "school_id": { "type": "string", "description": "ID of the school requesting withdrawal" },
+        "amount": { "type": "number", "description": "Amount to withdraw" },
+        "status": { "type": "string", "enum": ["pending", "completed"], "description": "Status of the request" },
+        "timestamp": { "type": "number", "description": "Unix timestamp" }
+      }
+    },
+    "Stat": {
+      "title": "Stat",
+      "description": "Global system statistics",
+      "type": "object",
+      "properties": {
+        "key": { "type": "string", "description": "Stat key (e.g., totalRevenue)" },
+        "value": { "type": "number", "description": "Stat value" }
+      }
+    }
+  },
+  "firestore": {
+    "/users/{uid}": {
+      "schema": "User",
+      "description": "User profiles and credits"
+    },
+    "/schools/{schoolId}": {
+      "schema": "School",
+      "description": "School registrations"
+    },
+    "/activity/{activityId}": {
+      "schema": "Activity",
+      "description": "Global activity logs"
+    },
+    "/withdrawals/{withdrawalId}": {
+      "schema": "Withdrawal",
+      "description": "Financial withdrawal requests"
+    },
+    "/stats/{key}": {
+      "schema": "Stat",
+      "description": "Global counters"
+    }
+  }
+}

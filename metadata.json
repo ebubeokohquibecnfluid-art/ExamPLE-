@@ -1,0 +1,5 @@
+{
+  "name": "ExamPLE",
+  "description": "An AI-powered educational assistant that explains concepts and solves questions with the expertise and warmth of a Nigerian teacher. Ready for production.",
+  "requestFramePermissions": ["microphone"]
+}
