@@ -1,0 +1,7 @@
+node_modules
+dist
+.git
+.github
+server.log
+database.sqlite*
+package-lock.json
