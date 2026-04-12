@@ -1,24 +1,32 @@
 import express from "express";
 import path from "path";
 import { createServer as createViteServer } from "vite";
-import { GoogleGenAI, Modality } from "@google/genai";
-import fs from "fs";
+import { GoogleGenAI } from "@google/genai";
 import axios from "axios";
-import { getDb } from "./src/db.ts"; // Added .ts here
+import { getDb } from "./src/db.ts";
 
 async function startServer() {
   const app = express();
   const PORT = process.env.PORT || 8080;
-  const db = await getDb();
+
+  // --- CRITICAL: LISTEN IMMEDIATELY ---
+  app.listen(PORT, "0.0.0.0", () => {
+    console.log(`App is live and listening on port ${PORT}`);
+  });
 
   app.use(express.json({ limit: '50mb' }));
   app.set('trust proxy', 1);
 
-  const apiKey = (process.env.REAL_GEMINI_KEY || process.env.GEMINI_API_KEY || "").trim();
+  // Load DB in background
+  let db: any;
+  getDb().then(d => { db = d; console.log("DB Ready"); }).catch(e => console.error("DB Error", e));
+
+  const apiKey = (process.env.GEMINI_API_KEY || "").trim();
   const ai = new GoogleGenAI({ apiKey });
 
   app.post("/ask-question", async (req, res) => {
-    const { user_id, questionText } = req.body;
+    if (!db) return res.status(503).json({ error: "System starting..." });
+    const { questionText } = req.body;
     try {
       const model = ai.getGenerativeModel({ model: "gemini-2.0-flash" });
       const result = await model.generateContentStream([{ text: questionText }]);
@@ -28,20 +36,17 @@ async function startServer() {
       }
       res.write(`data: [DONE]\n\n`);
       res.end();
-    } catch (err) { res.status(500).json({ error: "Teacher is busy" }); }
+    } catch (err) { res.status(500).json({ error: "AI Error" }); }
   });
 
-  if (process.env.NODE_ENV !== "production") {
-    const vite = await createViteServer({ server: { middlewareMode: true, hmr: false }, appType: "spa" });
-    app.use(vite.middlewares);
-  } else {
+  if (process.env.NODE_ENV === "production") {
     const distPath = path.join(process.cwd(), "dist");
     app.use(express.static(distPath));
     app.get("*", (req, res) => res.sendFile(path.join(distPath, "index.html")));
+  } else {
+    const vite = await createViteServer({ server: { middlewareMode: true }, appType: "spa" });
+    app.use(vite.middlewares);
   }
-
-  app.listen(PORT, "0.0.0.0", () => {
-    console.log(`Server running on port ${PORT}`);
-  });
 }
-startServer();
+
+startServer().catch(err => console.error("Startup Crash:", err));
