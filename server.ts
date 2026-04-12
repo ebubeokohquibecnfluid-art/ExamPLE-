@@ -4,7 +4,7 @@ import { createServer as createViteServer } from "vite";
 import { GoogleGenAI, Modality } from "@google/genai";
 import fs from "fs";
 import axios from "axios";
-import { getDb } from "./src/db";
+import { getDb } from "./src/db.js";
 
 async function startServer() {
   const app = express();
