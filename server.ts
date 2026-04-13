@@ -3,19 +3,20 @@ import path from "path";
 import { GoogleGenAI } from "@google/genai";
 import sqlite3 from 'sqlite3';
 import { open } from 'sqlite';
+import fs from "fs";
+import axios from "axios";
 
 async function startServer() {
   const app = express();
   const PORT = process.env.PORT || 8080;
 
-  // --- STEP 1: TELL GOOGLE CLOUD WE ARE ALIVE IMMEDIATELY ---
-  const server = app.listen(PORT, "0.0.0.0", () => {
+  // --- PASS HEALTH CHECK IMMEDIATELY ---
+  app.listen(PORT, "0.0.0.0", () => {
     console.log(`✅ App is live on port ${PORT}`);
   });
 
   app.use(express.json({ limit: '50mb' }));
 
-  // --- STEP 2: DATABASE SETUP (IN-MEMORY FOR SPEED) ---
   let db: any;
   try {
     db = await open({
@@ -34,7 +35,6 @@ async function startServer() {
   const apiKey = (process.env.GEMINI_API_KEY || "").trim();
   const ai = new GoogleGenAI({ apiKey });
 
-  // Simple API for testing
   app.get("/api/health", (req, res) => res.json({ status: "ok" }));
 
   app.post("/ask-question", async (req, res) => {
@@ -48,7 +48,6 @@ async function startServer() {
     }
   });
 
-  // --- STEP 3: SERVE THE FRONTEND ---
   const distPath = path.join(process.cwd(), "dist");
   if (fs.existsSync(distPath)) {
     app.use(express.static(distPath));
@@ -58,5 +57,4 @@ async function startServer() {
   }
 }
 
-import fs from "fs";
 startServer().catch(err => console.error("Startup Crash:", err));
