@@ -8,25 +8,22 @@ import { getDb } from "./src/db.ts";
 
 async function startServer() {
   const app = express();
-  
-  // --- FIX 1: Use Port 8080 for Cloud Run ---
   const PORT = process.env.PORT || 8080;
 
-  // --- FIX 2: LISTEN IMMEDIATELY ---
-  // This tells Google Cloud "I am alive" instantly, passing the health check.
-  const server = app.listen(PORT, "0.0.0.0", () => {
+  // --- STEP 1: PASS HEALTH CHECK IMMEDIATELY ---
+  app.listen(PORT, "0.0.0.0", () => {
     console.log(`✅ ExamPLE Server is awake on port ${PORT}`);
   });
 
-  // Load Database in background so it doesn't block startup
+  app.use(express.json({ limit: '50mb' }));
+  app.set('trust proxy', 1);
+
+  // Load Database in background
   let db: any;
   getDb().then(d => { 
     db = d; 
     console.log("✅ Database connected in background"); 
   }).catch(e => console.error("❌ DB Background Error:", e));
-
-  app.use(express.json({ limit: '50mb' }));
-  app.set('trust proxy', 1);
 
   const apiKey = (process.env.REAL_GEMINI_KEY || process.env.GEMINI_API_KEY || "").trim();
   const ai = new GoogleGenAI({ apiKey });
@@ -71,7 +68,6 @@ async function startServer() {
       res.json(response.data);
     } catch (err) { res.status(500).json({ error: "Payment failed" }); }
   });
-
   app.post("/api/payments/webhook", async (req, res) => {
     const event = req.body;
     if (event.event === "charge.success" && db) {
@@ -99,6 +95,7 @@ async function startServer() {
       res.json({ text: response.text?.trim() || "" });
     } catch (err) { res.status(500).json({ error: "Transcription failed" }); }
   });
+
   app.post("/ask-question", async (req, res) => {
     if (!db) return res.status(503).json({ error: "System warming up..." });
     const { user_id, level, subject, questionText, usePidgin, imageBase64, school_id } = req.body;
@@ -122,7 +119,7 @@ async function startServer() {
   });
 
   app.post("/get-audio", async (req, res) => {
-    const { text, usePidgin } = req.body;
+    const { text } = req.body;
     try {
       const response = await ai.models.generateContent({
         model: "gemini-2.0-flash",
@@ -167,10 +164,25 @@ async function startServer() {
     res.json({ message: "Command not recognized." });
   });
 
+  // Admin APIs
+  const ADMIN_SECRET = "exam-admin-2026";
+  app.get("/admin/stats", async (req, res) => {
+    if (req.headers.authorization !== `Bearer ${ADMIN_SECRET}`) return res.status(401).end();
+    if (!db) return res.status(503).end();
+    const usersCount = (await db.get("SELECT COUNT(*) as count FROM users")).count;
+    const schoolsCount = (await db.get("SELECT COUNT(*) as count FROM schools")).count;
+    res.json({ totalUsers: usersCount, totalSchools: schoolsCount });
+  });
+
+  // Serve Frontend
   if (process.env.NODE_ENV === "production") {
     const distPath = path.join(process.cwd(), "dist");
     app.use(express.static(distPath));
-    app.get("*", (req, res) => res.sendFile(path.join(distPath, "index.html")));
+    app.get("*", (req, res) => {
+      const indexPath = path.join(distPath, "index.html");
+      if (fs.existsSync(indexPath)) res.sendFile(indexPath);
+      else res.send("App is starting... please refresh in 30 seconds.");
+    });
   } else {
     const vite = await createViteServer({ server: { middlewareMode: true }, appType: "spa" });
     app.use(vite.middlewares);
