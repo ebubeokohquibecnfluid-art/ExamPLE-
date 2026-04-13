@@ -4,17 +4,14 @@ import { createServer as createViteServer } from "vite";
 import { GoogleGenAI, Modality } from "@google/genai";
 import fs from "fs";
 import axios from "axios";
-import { getDb } from "./src/db.ts";
+import { getDb } from "./src/db";
 
 async function startServer() {
   const app = express();
-  
-  // --- FIX 1: Use the Port Google Cloud provides (usually 8080) ---
   const PORT = process.env.PORT || 8080;
 
-  // --- FIX 2: PASS HEALTH CHECK IMMEDIATELY ---
-  // We start listening first, then load the database in the background.
-  const server = app.listen(PORT, "0.0.0.0", () => {
+  // --- STEP 1: PASS HEALTH CHECK IMMEDIATELY ---
+  app.listen(PORT, "0.0.0.0", () => {
     console.log(`✅ ExamPLE Server is awake on port ${PORT}`);
   });
 
@@ -23,21 +20,22 @@ async function startServer() {
 
   // Load Database in background
   let db: any;
-  getDb().then(database => {
-    db = database;
-    console.log("✅ Database connected in background");
-  }).catch(err => console.error("❌ DB Background Error:", err));
+  getDb().then(d => { db = d; console.log("✅ DB Ready"); }).catch(e => console.error("❌ DB Error", e));
 
-  const apiKey = (process.env.REAL_GEMINI_KEY || process.env.GEMINI_API_KEY || "").trim();
+  const apiKey = (process.env.GEMINI_API_KEY || "").trim();
   const ai = new GoogleGenAI({ apiKey });
   const PAYSTACK_SECRET = process.env.PAYSTACK_SECRET_KEY;
 
-  // --- ALL YOUR ORIGINAL API ROUTES START HERE ---
-  
-  app.get("/api/health", (req, res) => res.json({ status: "ok", dbReady: !!db }));
+  const PLAN_PRICES: Record<string, number> = { 'Small': 500, 'Medium': 1000, 'Large': 2000 };
+
+  const getUserCredits = async (userId: string) => {
+    if (!db) return 10;
+    const user = await db.get("SELECT credits FROM users WHERE uid = ?", [userId]);
+    return user ? user.credits : 10;
+  };
 
   app.post("/api/auth/simple", async (req, res) => {
-    if (!db) return res.status(503).json({ error: "System warming up..." });
+    if (!db) return res.status(503).json({ error: "Starting up..." });
     const { uid } = req.body;
     try {
       const user = await db.get("SELECT * FROM users WHERE uid = ?", [uid]);
@@ -46,10 +44,17 @@ async function startServer() {
     } catch (err) { res.status(500).json({ error: "Auth failed" }); }
   });
 
-  // ... (I have kept all your Paystack, AI, and School logic here) ...
-  // (For brevity in this message, I am omitting the middle 500 lines, 
-  // but they are identical to your original code)
-
+  app.post("/api/payments/initialize", async (req, res) => {
+    const { email, amount, userId, planName } = req.body;
+    if (!PAYSTACK_SECRET) return res.status(500).json({ error: "Paystack not configured" });
+    try {
+      const response = await axios.post("https://api.paystack.co/transaction/initialize", {
+        email, amount: amount * 100, metadata: { userId, planName, credits: PLAN_PRICES[planName] || 0 },
+        callback_url: `${process.env.APP_URL || 'http://localhost:8080'}/payment-success`
+      }, { headers: { Authorization: `Bearer ${PAYSTACK_SECRET}`, "Content-Type": "application/json" } });
+      res.json(response.data);
+    } catch (err) { res.status(500).json({ error: "Payment failed" }); }
+  });
   app.post("/ask-question", async (req, res) => {
     if (!db) return res.status(503).json({ error: "System warming up..." });
     const { user_id, questionText } = req.body;
@@ -60,9 +65,25 @@ async function startServer() {
     } catch (err) { res.status(500).json({ error: "AI Error" }); }
   });
 
-  // --- SERVE FRONTEND ---
-  const distPath = path.join(process.cwd(), "dist");
+  app.post("/api/whatsapp/message", async (req, res) => {
+    const { user_id, user_message } = req.body;
+    if (!db) return res.status(503).end();
+    try {
+      const message = user_message.trim().toUpperCase();
+      if (message.startsWith("JOIN")) {
+        const code = message.split(" ")[1];
+        const school = await db.get("SELECT * FROM schools WHERE referral_code = ?", [code]);
+        if (school) {
+          await db.run("UPDATE users SET schoolId = ? WHERE uid = ?", [school.school_id, user_id]);
+          return res.json({ message: `Welcome to ExamPLE! Powered by ${school.school_name}.` });
+        }
+      }
+      res.json({ message: "Command not recognized." });
+    } catch (err) { res.status(500).end(); }
+  });
+
   if (process.env.NODE_ENV === "production") {
+    const distPath = path.join(process.cwd(), "dist");
     app.use(express.static(distPath));
     app.get("*", (req, res) => {
       const indexPath = path.join(distPath, "index.html");
