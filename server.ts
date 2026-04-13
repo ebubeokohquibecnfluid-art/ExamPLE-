@@ -9,23 +9,28 @@ async function startServer() {
   const app = express();
   const PORT = process.env.PORT || 8080;
 
-  // --- CRITICAL: LISTEN IMMEDIATELY ---
-  app.listen(PORT, "0.0.0.0", () => {
-    console.log(`App is live and listening on port ${PORT}`);
+  // --- STEP 1: PASS THE HEALTH CHECK IMMEDIATELY ---
+  const server = app.listen(PORT, "0.0.0.0", () => {
+    console.log(`✅ App is live and listening on port ${PORT}`);
   });
 
   app.use(express.json({ limit: '50mb' }));
   app.set('trust proxy', 1);
 
-  // Load DB in background
+  // --- STEP 2: LOAD DATABASE IN BACKGROUND ---
   let db: any;
-  getDb().then(d => { db = d; console.log("DB Ready"); }).catch(e => console.error("DB Error", e));
+  getDb().then(database => {
+    db = database;
+    console.log("✅ Database connected");
+  }).catch(err => {
+    console.error("❌ Database failed to load, but app is still running:", err);
+  });
 
   const apiKey = (process.env.GEMINI_API_KEY || "").trim();
   const ai = new GoogleGenAI({ apiKey });
 
   app.post("/ask-question", async (req, res) => {
-    if (!db) return res.status(503).json({ error: "System starting..." });
+    if (!db) return res.status(503).json({ error: "Database is still waking up... please try again in 5 seconds." });
     const { questionText } = req.body;
     try {
       const model = ai.getGenerativeModel({ model: "gemini-2.0-flash" });
@@ -36,9 +41,12 @@ async function startServer() {
       }
       res.write(`data: [DONE]\n\n`);
       res.end();
-    } catch (err) { res.status(500).json({ error: "AI Error" }); }
+    } catch (err) {
+      res.status(500).json({ error: "AI Teacher is busy" });
+    }
   });
 
+  // Serve static files in production
   if (process.env.NODE_ENV === "production") {
     const distPath = path.join(process.cwd(), "dist");
     app.use(express.static(distPath));
@@ -49,4 +57,6 @@ async function startServer() {
   }
 }
 
-startServer().catch(err => console.error("Startup Crash:", err));
+startServer().catch(err => {
+  console.error("❌ CRITICAL STARTUP ERROR:", err);
+});
