@@ -7,4 +7,5 @@ RUN npm run build
 ENV NODE_ENV=production
 ENV PORT=8080
 EXPOSE 8080
+# Use the internal tsx runner which is more stable in containers
 CMD ["npx", "tsx", "server.ts"]
