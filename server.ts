@@ -12,12 +12,8 @@ const PORT = process.env.PORT || 8080;
 app.use(express.json({ limit: "50mb" }));
 app.set("trust proxy", 1);
 
-// --- 2. ROOT HEALTH CHECK (Top Priority) ---
-app.get("/", (req, res) => {
-  res.status(200).send("ExamPLE API is live 🚀");
-});
-
-// Health check for Cloud Run
+// --- 2. DEDICATED HEALTH CHECK ---
+// Cloud Run can use this to see if the server is up
 app.get("/health", (req, res) => {
   res.status(200).send("OK");
 });
@@ -35,8 +31,6 @@ getDb()
 
 // --- 4. ENVIRONMENT VARIABLES ---
 const apiKey = (process.env.REAL_GEMINI_KEY || process.env.GEMINI_API_KEY || "").trim();
-if (!apiKey) console.error("❌ Missing Gemini API Key");
-
 const ai = new GoogleGenAI({ apiKey });
 const PAYSTACK_SECRET = process.env.PAYSTACK_SECRET_KEY;
 const PLAN_PRICES = { 'Small': 500, 'Medium': 1000, 'Large': 2000 };
@@ -144,29 +138,26 @@ app.post("/api/whatsapp/message", async (req, res) => {
   } catch (err) { res.status(500).json({ error: "WhatsApp failed" }); }
 });
 
-// --- 6. PRODUCTION FRONTEND SERVING ---
+// --- 6. PRODUCTION FRONTEND SERVING (Smart UI Handling) ---
 const distPath = path.join(process.cwd(), "dist");
 app.use(express.static(distPath));
 
+// This handles the root "/" and all other frontend routes
 app.get("*", (req, res) => {
   const indexPath = path.join(distPath, "index.html");
   if (fs.existsSync(indexPath)) {
     res.sendFile(indexPath);
   } else {
-    res.send("App is starting... refresh shortly.");
+    // Fallback for health checks if the build is missing
+    res.status(200).send("ExamPLE API is live 🚀 (App is starting...)");
   }
 });
 
 // --- 7. GLOBAL ERROR HANDLING ---
-process.on("uncaughtException", (err) => {
-  console.error("Uncaught Exception:", err);
-});
+process.on("uncaughtException", (err) => { console.error("Uncaught Exception:", err); });
+process.on("unhandledRejection", (err) => { console.error("Unhandled Rejection:", err); });
 
-process.on("unhandledRejection", (err) => {
-  console.error("Unhandled Rejection:", err);
-});
-
-// --- 8. SERVER START (AT THE VERY END) ---
+// --- 8. SERVER START ---
 app.listen(PORT, "0.0.0.0", () => {
   console.log(`🚀 ExamPLE running on port ${PORT}`);
 });
