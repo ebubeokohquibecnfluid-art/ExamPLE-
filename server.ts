@@ -52,7 +52,11 @@ getDb()
 
 // --- 5. ENVIRONMENT VARIABLES ---
 const apiKey = (process.env.REAL_GEMINI_KEY || process.env.GEMINI_API_KEY || "").trim();
-if (!apiKey) console.error("❌ Missing Gemini API Key");
+if (!apiKey) {
+  console.error("❌ Missing Gemini API Key");
+} else {
+  console.log(`✅ Gemini API Key loaded (starts with: ${apiKey.substring(0, 6)}...)`);
+}
 
 const ai = new GoogleGenAI({ apiKey });
 const PAYSTACK_SECRET = process.env.PAYSTACK_SECRET_KEY;
@@ -102,15 +106,28 @@ app.post("/ask-question", async (req, res) => {
     const credits = getUserCredits(user_id);
     if (credits < 1) return res.status(403).json({ error: "No credits" });
     res.setHeader('Content-Type', 'text/event-stream');
+    console.log(`📨 Question from ${user_id}: ${questionText?.substring(0, 50)}`);
     const stream = await ai.models.generateContentStream({
       model: "gemini-1.5-flash",
       contents: [{ role: "user", parts: [{ text: questionText }] }],
     });
-    for await (const chunk of stream) { if (chunk.text) res.write(`data: ${JSON.stringify({ text: chunk.text })}\n\n`); }
+    let chunkCount = 0;
+    for await (const chunk of stream) {
+      const text = chunk.text;
+      if (text) {
+        res.write(`data: ${JSON.stringify({ text })}\n\n`);
+        chunkCount++;
+      }
+    }
+    console.log(`✅ Streamed ${chunkCount} chunks for ${user_id}`);
     if (db) db.prepare("UPDATE users SET credits = MAX(0, credits - 1) WHERE uid = ?").run(user_id);
     res.write(`data: [DONE]\n\n`);
     res.end();
-  } catch (e) { res.end(); }
+  } catch (e: any) {
+    console.error("❌ ask-question error:", e?.message || e);
+    res.write(`data: [DONE]\n\n`);
+    res.end();
+  }
 });
 
 app.post("/register-school", (req, res) => {
