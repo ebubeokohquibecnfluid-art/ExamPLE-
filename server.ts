@@ -1,19 +1,34 @@
 import express from "express";
-import path from "path";
-import { fileURLToPath } from "url";
 import axios from "axios";
 import cors from "cors";
 import { GoogleGenAI, Modality } from "@google/genai";
 import { getDb } from "./src/db.js";
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
-
 const app = express();
-const IS_PRODUCTION = process.env.NODE_ENV === 'production';
-const PORT = Number(process.env.PORT) || (IS_PRODUCTION ? 5000 : 3001);
+const PORT = Number(process.env.PORT) || 5000;
 
 // --- 1. CORS CONFIGURATION ---
-app.use(cors());
+// Allow requests from Vercel frontend and any configured APP_URL
+const allowedOrigins = [
+  process.env.APP_URL,
+  process.env.FRONTEND_URL,
+].filter(Boolean);
+
+app.use(cors({
+  origin: (origin, callback) => {
+    // Allow requests with no origin (curl, Postman, etc.) or from allowed origins
+    if (!origin) return callback(null, true);
+    // Allow any vercel.app domain and any explicitly configured origin
+    if (
+      origin.endsWith('.vercel.app') ||
+      allowedOrigins.includes(origin)
+    ) {
+      return callback(null, true);
+    }
+    callback(new Error('Not allowed by CORS'));
+  },
+  credentials: true
+}));
 
 // --- 2. DEDICATED HEALTH CHECK ---
 app.get("/health", (req, res) => {
@@ -29,7 +44,7 @@ let db: any = null;
 getDb()
   .then(database => {
     db = database;
-    console.log("✅ Database connected in background");
+    console.log("✅ Database connected");
   })
   .catch(err => {
     console.error("❌ DB Connection Error:", err);
@@ -66,28 +81,19 @@ app.post("/api/auth/simple", (req, res) => {
 
 app.post("/api/payments/initialize", async (req, res) => {
   const { email, amount, userId, planName } = req.body;
+  const frontendUrl = process.env.APP_URL || process.env.FRONTEND_URL || '';
   // Demo Mode check
   if (PAYSTACK_SECRET === "sk_test_examPLE_demo_key_999") {
-    return res.json({ status: true, data: { authorization_url: `${process.env.APP_URL || ''}/payment-success?demo=true&userId=${userId}&credits=${PLAN_PRICES[planName] || 0}` } });
+    return res.json({ status: true, data: { authorization_url: `${frontendUrl}/payment-success?demo=true&userId=${userId}&credits=${PLAN_PRICES[planName] || 0}` } });
   }
   if (!PAYSTACK_SECRET) return res.status(500).json({ error: "Paystack not configured" });
   try {
     const response = await axios.post("https://api.paystack.co/transaction/initialize", {
       email, amount: amount * 100, metadata: { userId, planName, credits: PLAN_PRICES[planName] || 0 },
-      callback_url: `${process.env.APP_URL}/payment-success`
+      callback_url: `${frontendUrl}/payment-success`
     }, { headers: { Authorization: `Bearer ${PAYSTACK_SECRET}` } });
     res.json(response.data);
   } catch (err) { res.status(500).json({ error: "Payment failed" }); }
-});
-
-app.get("/payment-success", async (req, res) => {
-  const { demo, userId, credits } = req.query;
-  if (demo === "true" && userId && credits && db) {
-    db.prepare("UPDATE users SET credits = credits + ? WHERE uid = ?").run(Number(credits), userId);
-  }
-  
-  const frontendUrl = process.env.APP_URL || 'http://localhost:5000';
-  res.redirect(`${frontendUrl}/?payment=success`);
 });
 
 app.post("/ask-question", async (req, res) => {
@@ -148,29 +154,20 @@ app.post("/api/whatsapp/message", (req, res) => {
   } catch (err) { res.status(500).json({ error: "WhatsApp failed" }); }
 });
 
-// --- 7. STATIC FILE SERVING (Production only) ---
-if (IS_PRODUCTION) {
-  const distPath = path.join(__dirname, 'dist');
-  app.use(express.static(distPath));
-  app.get('*', (req, res) => {
-    res.sendFile(path.join(distPath, 'index.html'));
+// --- 7. API STATUS ---
+app.get("/", (req, res) => {
+  res.json({
+    message: "ExamPLE API is online",
+    status: "ready",
+    endpoints: ["/ask-question", "/get-audio", "/register-school", "/api/auth/simple", "/api/payments/initialize"]
   });
-} else {
-  app.get("/api", (req, res) => {
-    res.json({ 
-      message: "ExamPLE API is online", 
-      status: "ready",
-      endpoints: ["/ask-question", "/get-audio", "/register-school", "/school-login"] 
-    });
-  });
-}
+});
 
 // --- 8. GLOBAL ERROR HANDLING ---
 process.on("uncaughtException", (err) => { console.error("Uncaught Exception:", err); });
 process.on("unhandledRejection", (err) => { console.error("Unhandled Rejection:", err); });
 
-// --- 9. SERVER START (AT THE VERY END) ---
-const host = IS_PRODUCTION ? '0.0.0.0' : 'localhost';
-app.listen(PORT, host, () => {
-  console.log(`🚀 ExamPLE running on port ${PORT}`);
+// --- 9. SERVER START ---
+app.listen(PORT, "0.0.0.0", () => {
+  console.log(`🚀 ExamPLE API running on port ${PORT}`);
 });

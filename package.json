@@ -7,13 +7,10 @@
     "node": ">=20.0.0"
   },
   "scripts": {
-    "dev": "concurrently \"tsx server.ts\" \"vite\"",
-    "dev:server": "tsx server.ts",
-    "dev:client": "vite",
+    "dev": "tsx server.ts",
     "start": "node --experimental-strip-types server.ts",
-    "build": "vite build",
-    "preview": "vite preview",
-    "clean": "rm -rf dist",
+    "build:frontend": "vite build",
+    "dev:frontend": "vite",
     "lint": "tsc --noEmit"
   },
   "dependencies": {
