@@ -1,16 +1,18 @@
 import express from "express";
 import path from "path";
-import fs from "fs";
+import { fileURLToPath } from "url";
 import axios from "axios";
 import cors from "cors";
 import { GoogleGenAI, Modality } from "@google/genai";
 import { getDb } from "./src/db.js";
 
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+
 const app = express();
-const PORT = Number(process.env.PORT) || 3000;
+const IS_PRODUCTION = process.env.NODE_ENV === 'production';
+const PORT = Number(process.env.PORT) || (IS_PRODUCTION ? 5000 : 3001);
 
 // --- 1. CORS CONFIGURATION ---
-// Allows your Vercel frontend to communicate with this Replit backend
 app.use(cors());
 
 // --- 2. DEDICATED HEALTH CHECK ---
@@ -23,7 +25,7 @@ app.use(express.json({ limit: "50mb" }));
 app.set("trust proxy", 1);
 
 // --- 4. SAFE DATABASE INITIALIZATION (Non-blocking) ---
-let db = null;
+let db: any = null;
 getDb()
   .then(database => {
     db = database;
@@ -39,26 +41,26 @@ if (!apiKey) console.error("❌ Missing Gemini API Key");
 
 const ai = new GoogleGenAI({ apiKey });
 const PAYSTACK_SECRET = process.env.PAYSTACK_SECRET_KEY;
-const PLAN_PRICES = { 'Small': 500, 'Medium': 1000, 'Large': 2000 };
+const PLAN_PRICES: Record<string, number> = { 'Small': 500, 'Medium': 1000, 'Large': 2000 };
 
 // Helper for credits
-const getUserCredits = async (userId) => {
+const getUserCredits = (userId: string): number => {
   if (!db) return 10;
   try {
-    const user = await db.get("SELECT credits FROM users WHERE uid = ?", [userId]);
+    const user = db.prepare("SELECT credits FROM users WHERE uid = ?").get(userId) as any;
     return user ? user.credits : 10;
   } catch (e) { return 10; }
 };
 
 // --- 6. API ENDPOINTS ---
 
-app.post("/api/auth/simple", async (req, res) => {
+app.post("/api/auth/simple", (req, res) => {
   const { uid } = req.body;
   if (!uid || !db) return res.status(400).json({ error: "Missing data" });
   try {
-    const user = await db.get("SELECT * FROM users WHERE uid = ?", [uid]);
-    if (!user) await db.run("INSERT INTO users (uid, credits) VALUES (?, ?)", [uid, 10]);
-    res.json(await db.get("SELECT * FROM users WHERE uid = ?", [uid]));
+    const user = db.prepare("SELECT * FROM users WHERE uid = ?").get(uid) as any;
+    if (!user) db.prepare("INSERT INTO users (uid, credits) VALUES (?, ?)").run(uid, 10);
+    res.json(db.prepare("SELECT * FROM users WHERE uid = ?").get(uid));
   } catch (err) { res.status(500).json({ error: "Auth failed" }); }
 });
 
@@ -81,19 +83,17 @@ app.post("/api/payments/initialize", async (req, res) => {
 app.get("/payment-success", async (req, res) => {
   const { demo, userId, credits } = req.query;
   if (demo === "true" && userId && credits && db) {
-    await db.run("UPDATE users SET credits = credits + ? WHERE uid = ?", [Number(credits), userId]);
+    db.prepare("UPDATE users SET credits = credits + ? WHERE uid = ?").run(Number(credits), userId);
   }
   
-  // REDIRECT FIX: Sends the user back to your Vercel Frontend
-  // Make sure to set APP_URL in Replit to your Vercel URL
-  const frontendUrl = process.env.APP_URL || 'https://your-vercel-app.vercel.app';
+  const frontendUrl = process.env.APP_URL || 'http://localhost:5000';
   res.redirect(`${frontendUrl}/?payment=success`);
 });
 
 app.post("/ask-question", async (req, res) => {
   const { user_id, questionText } = req.body;
   try {
-    const credits = await getUserCredits(user_id);
+    const credits = getUserCredits(user_id);
     if (credits < 1) return res.status(403).json({ error: "No credits" });
     res.setHeader('Content-Type', 'text/event-stream');
     const stream = await ai.models.generateContentStream({
@@ -101,20 +101,20 @@ app.post("/ask-question", async (req, res) => {
       contents: [{ role: "user", parts: [{ text: questionText }] }],
     });
     for await (const chunk of stream) { if (chunk.text) res.write(`data: ${JSON.stringify({ text: chunk.text })}\n\n`); }
-    if (db) await db.run("UPDATE users SET credits = MAX(0, credits - 1) WHERE uid = ?", [user_id]);
+    if (db) db.prepare("UPDATE users SET credits = MAX(0, credits - 1) WHERE uid = ?").run(user_id);
     res.write(`data: [DONE]\n\n`);
     res.end();
   } catch (e) { res.end(); }
 });
 
-app.post("/register-school", async (req, res) => {
+app.post("/register-school", (req, res) => {
   const { school_name, password } = req.body;
   if (!school_name || !password || !db) return res.status(400).json({ error: "Missing data" });
   try {
     const school_slug = school_name.toLowerCase().replace(/[^a-z0-9]+/g, '-');
     const school_id = `sch_${Math.random().toString(36).substring(2, 9)}`;
     const referral_code = Math.random().toString(36).substring(2, 8).toUpperCase();
-    await db.run("INSERT INTO schools (school_id, school_name, school_slug, referral_code, password) VALUES (?, ?, ?, ?, ?)", [school_id, school_name, school_slug, referral_code, password]);
+    db.prepare("INSERT INTO schools (school_id, school_name, school_slug, referral_code, password) VALUES (?, ?, ?, ?, ?)").run(school_id, school_name, school_slug, referral_code, password);
     res.json({ school_name, school_id, school_slug, referral_code });
   } catch (err) { res.status(500).json({ error: "Registration failed" }); }
 });
@@ -131,16 +131,16 @@ app.post("/get-audio", async (req, res) => {
   } catch (err) { res.status(500).json({ error: "Audio failed" }); }
 });
 
-app.post("/api/whatsapp/message", async (req, res) => {
+app.post("/api/whatsapp/message", (req, res) => {
   const { user_id, user_message } = req.body;
   if (!db) return res.status(500).json({ error: "DB missing" });
   try {
     const message = user_message.trim().toUpperCase();
     if (message.startsWith("JOIN")) {
       const code = message.split(" ")[1];
-      const school = await db.get("SELECT * FROM schools WHERE referral_code = ?", [code]);
+      const school = db.prepare("SELECT * FROM schools WHERE referral_code = ?").get(code) as any;
       if (school) {
-        await db.run("UPDATE users SET schoolId = ? WHERE uid = ?", [school.school_id, user_id]);
+        db.prepare("UPDATE users SET schoolId = ? WHERE uid = ?").run(school.school_id, user_id);
         return res.json({ message: `Welcome to ExamPLE! Powered by ${school.school_name}.` });
       }
     }
@@ -148,20 +148,29 @@ app.post("/api/whatsapp/message", async (req, res) => {
   } catch (err) { res.status(500).json({ error: "WhatsApp failed" }); }
 });
 
-// --- 7. API STATUS ---
-app.get("/", (req, res) => {
-  res.json({ 
-    message: "ExamPLE API is online", 
-    status: "ready",
-    endpoints: ["/ask-question", "/get-audio", "/register-school", "/school-login"] 
+// --- 7. STATIC FILE SERVING (Production only) ---
+if (IS_PRODUCTION) {
+  const distPath = path.join(__dirname, 'dist');
+  app.use(express.static(distPath));
+  app.get('*', (req, res) => {
+    res.sendFile(path.join(distPath, 'index.html'));
   });
-});
+} else {
+  app.get("/api", (req, res) => {
+    res.json({ 
+      message: "ExamPLE API is online", 
+      status: "ready",
+      endpoints: ["/ask-question", "/get-audio", "/register-school", "/school-login"] 
+    });
+  });
+}
 
 // --- 8. GLOBAL ERROR HANDLING ---
 process.on("uncaughtException", (err) => { console.error("Uncaught Exception:", err); });
 process.on("unhandledRejection", (err) => { console.error("Unhandled Rejection:", err); });
 
 // --- 9. SERVER START (AT THE VERY END) ---
-app.listen(PORT, "0.0.0.0", () => {
+const host = IS_PRODUCTION ? '0.0.0.0' : 'localhost';
+app.listen(PORT, host, () => {
   console.log(`🚀 ExamPLE running on port ${PORT}`);
 });

@@ -1,7 +1,24 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
-import tailwindcss from '@tailwindcss/vite';
 
 export default defineConfig({
-  plugins: [react(), tailwindcss()],
+  plugins: [react()],
+  server: {
+    host: '0.0.0.0',
+    port: 5000,
+    allowedHosts: true,
+    proxy: {
+      '/api': 'http://localhost:3001',
+      '/ask-question': 'http://localhost:3001',
+      '/get-audio': 'http://localhost:3001',
+      '/register-school': 'http://localhost:3001',
+      '/payment-success': 'http://localhost:3001',
+    }
+  },
+  optimizeDeps: {
+    exclude: ['motion', 'framer-motion']
+  },
+  resolve: {
+    conditions: ['browser', 'module', 'main']
+  }
 });
