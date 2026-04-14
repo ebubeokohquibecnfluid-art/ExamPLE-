@@ -83,8 +83,11 @@ app.get("/payment-success", async (req, res) => {
   if (demo === "true" && userId && credits && db) {
     await db.run("UPDATE users SET credits = credits + ? WHERE uid = ?", [Number(credits), userId]);
   }
-  // Note: In a decoupled setup, this should ideally redirect back to the Vercel URL
-  res.send("Payment Successful! You can close this tab and return to the app.");
+  
+  // REDIRECT FIX: Sends the user back to your Vercel Frontend
+  // Make sure to set APP_URL in Replit to your Vercel URL
+  const frontendUrl = process.env.APP_URL || 'https://your-vercel-app.vercel.app';
+  res.redirect(`${frontendUrl}/?payment=success`);
 });
 
 app.post("/ask-question", async (req, res) => {
