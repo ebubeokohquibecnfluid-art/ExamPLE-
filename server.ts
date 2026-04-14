@@ -10,126 +10,88 @@ const app = express();
 const PORT = Number(process.env.PORT) || 3000;
 
 // --- 1. CORS CONFIGURATION ---
-app.use(cors());
+app.use(cors({
+  origin: "*", // Allows all origins for debugging
+  methods: ["GET", "POST"],
+  allowedHeaders: ["Content-Type"]
+}));
 
-// --- 2. DEDICATED HEALTH CHECK ---
-app.get("/health", (req, res) => {
-  res.status(200).send("OK");
-});
-
-// --- 3. EXPRESS CONFIGURATION ---
+// --- 2. EXPRESS CONFIGURATION ---
 app.use(express.json({ limit: "50mb" }));
 app.set("trust proxy", 1);
 
-// --- 4. SAFE DATABASE INITIALIZATION ---
+// --- 3. DATABASE ---
 let db = null;
-getDb()
-  .then(database => {
-    db = database;
-    console.log("✅ Database connected");
-  })
-  .catch(err => {
-    console.error("❌ DB Error:", err);
-  });
+getDb().then(d => { db = d; console.log("✅ DB Connected"); }).catch(e => console.error("❌ DB Error:", e));
 
-// --- 5. ENVIRONMENT VARIABLES ---
+// --- 4. AI CONFIGURATION ---
 const apiKey = (process.env.REAL_GEMINI_KEY || process.env.GEMINI_API_KEY || "").trim();
-const ai = new GoogleGenAI(apiKey);
-const PAYSTACK_SECRET = process.env.PAYSTACK_SECRET_KEY;
-const PLAN_PRICES = { 'Small': 500, 'Medium': 1000, 'Large': 2000 };
+console.log("🔑 API Key detected:", apiKey ? "YES (Starts with " + apiKey.substring(0, 5) + ")" : "NO");
 
-// Helper for credits
-const getUserCredits = async (userId) => {
-  if (!db) return 10;
-  try {
-    const user = await db.get("SELECT credits FROM users WHERE uid = ?", [userId]);
-    return user ? user.credits : 10;
-  } catch (e) { return 10; }
-};
+const genAI = new GoogleGenAI(apiKey);
 
-// --- 6. API ENDPOINTS ---
+// --- 5. API ENDPOINTS ---
+
+app.get("/health", (req, res) => res.json({ status: "ok", db: !!db }));
 
 app.post("/api/auth/simple", async (req, res) => {
   const { uid } = req.body;
   if (!uid || !db) return res.status(400).json({ error: "Missing data" });
   try {
-    const user = await db.get("SELECT * FROM users WHERE uid = ?", [uid]);
-    if (!user) await db.run("INSERT INTO users (uid, credits) VALUES (?, ?)", [uid, 10]);
-    res.json(await db.get("SELECT * FROM users WHERE uid = ?", [uid]));
+    let user = await db.get("SELECT * FROM users WHERE uid = ?", [uid]);
+    if (!user) {
+      await db.run("INSERT INTO users (uid, credits) VALUES (?, ?)", [uid, 10]);
+      user = { uid, credits: 10 };
+    }
+    res.json(user);
   } catch (err) { res.status(500).json({ error: "Auth failed" }); }
 });
 
-app.post("/api/payments/initialize", async (req, res) => {
-  const { email, amount, userId, planName } = req.body;
-  if (PAYSTACK_SECRET === "sk_test_examPLE_demo_key_999") {
-    return res.json({ status: true, data: { authorization_url: `${process.env.APP_URL || ''}/payment-success?demo=true&userId=${userId}&credits=${PLAN_PRICES[planName] || 0}` } });
-  }
-  try {
-    const response = await axios.post("https://api.paystack.co/transaction/initialize", {
-      email, amount: amount * 100, metadata: { userId, planName, credits: PLAN_PRICES[planName] || 0 },
-      callback_url: `${process.env.APP_URL}/payment-success`
-    }, { headers: { Authorization: `Bearer ${PAYSTACK_SECRET}` } });
-    res.json(response.data);
-  } catch (err) { res.status(500).json({ error: "Payment failed" }); }
-});
-
-app.get("/payment-success", async (req, res) => {
-  const { demo, userId, credits } = req.query;
-  if (demo === "true" && userId && credits && db) {
-    await db.run("UPDATE users SET credits = credits + ? WHERE uid = ?", [Number(credits), userId]);
-  }
-  const frontendUrl = process.env.APP_URL || 'https://exam-ple.vercel.app';
-  res.redirect(`${frontendUrl}/?payment=success`);
-});
-
-// --- FIXED AI ENDPOINT ---
+// --- THE AI ENDPOINT (WITH LOGGING) ---
 app.post("/ask-question", async (req, res) => {
   const { user_id, questionText } = req.body;
-  try {
-    const credits = await getUserCredits(user_id);
-    if (credits < 1) return res.status(403).json({ error: "No credits" });
+  console.log(`📩 New Question from ${user_id}: "${questionText}"`);
 
+  try {
     res.setHeader('Content-Type', 'text/event-stream');
-    
-    // Correct SDK usage
-    const model = ai.getGenerativeModel({ model: "gemini-1.5-flash" });
+    res.setHeader('Cache-Control', 'no-cache');
+    res.setHeader('Connection', 'keep-alive');
+
+    if (!apiKey) {
+      console.error("❌ ERROR: No API Key found in Environment Variables!");
+      res.write(`data: ${JSON.stringify({ text: "Error: API Key missing on server." })}\n\n`);
+      return res.end();
+    }
+
+    const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+    console.log("🤖 Calling Gemini AI...");
+
     const result = await model.generateContentStream(questionText);
 
+    let fullText = "";
     for await (const chunk of result.stream) {
       const chunkText = chunk.text();
       if (chunkText) {
+        fullText += chunkText;
         res.write(`data: ${JSON.stringify({ text: chunkText })}\n\n`);
       }
     }
 
+    console.log("✅ AI Response complete. Length:", fullText.length);
+    
     if (db) await db.run("UPDATE users SET credits = MAX(0, credits - 1) WHERE uid = ?", [user_id]);
+    
     res.write(`data: [DONE]\n\n`);
     res.end();
   } catch (e) {
-    console.error("AI Error:", e);
+    console.error("❌ AI STREAM ERROR:", e);
+    res.write(`data: ${JSON.stringify({ text: "Sorry, I'm having trouble connecting to the AI. Please check the server logs." })}\n\n`);
     res.end();
   }
 });
 
-app.post("/get-audio", async (req, res) => {
-  const { text } = req.body;
-  try {
-    const model = ai.getGenerativeModel({ model: "gemini-1.5-flash" });
-    const response = await model.generateContent({
-      contents: [{ role: "user", parts: [{ text: `Say this: ${text}` }] }],
-      generationConfig: { responseModalities: ["AUDIO"] as any }
-    });
-    res.json({ audio: response.response.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data });
-  } catch (err) { 
-    console.error("Audio Error:", err);
-    res.status(500).json({ error: "Audio failed" }); 
-  }
-});
-
-app.get("/", (req, res) => {
-  res.json({ message: "ExamPLE API is online", status: "ready" });
-});
+app.get("/", (req, res) => res.json({ message: "ExamPLE API is online" }));
 
 app.listen(PORT, "0.0.0.0", () => {
-  console.log(`🚀 API running on port ${PORT}`);
+  console.log(`🚀 Server listening on port ${PORT}`);
 });
