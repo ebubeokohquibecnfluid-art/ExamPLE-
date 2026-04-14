@@ -2,35 +2,41 @@ import express from "express";
 import path from "path";
 import fs from "fs";
 import axios from "axios";
+import cors from "cors";
 import { GoogleGenAI, Modality } from "@google/genai";
 import { getDb } from "./src/db.js";
 
 const app = express();
-const PORT = process.env.PORT || 8080;
+const PORT = Number(process.env.PORT) || 3000;
 
-// --- 1. EXPRESS CONFIGURATION ---
-app.use(express.json({ limit: "50mb" }));
-app.set("trust proxy", 1);
+// --- 1. CORS CONFIGURATION ---
+// Allows your Vercel frontend to communicate with this Replit backend
+app.use(cors());
 
 // --- 2. DEDICATED HEALTH CHECK ---
-// Cloud Run can use this to see if the server is up
 app.get("/health", (req, res) => {
   res.status(200).send("OK");
 });
 
-// --- 3. SAFE DATABASE INITIALIZATION ---
+// --- 3. EXPRESS CONFIGURATION ---
+app.use(express.json({ limit: "50mb" }));
+app.set("trust proxy", 1);
+
+// --- 4. SAFE DATABASE INITIALIZATION (Non-blocking) ---
 let db = null;
 getDb()
   .then(database => {
     db = database;
-    console.log("✅ Database connected");
+    console.log("✅ Database connected in background");
   })
   .catch(err => {
     console.error("❌ DB Connection Error:", err);
   });
 
-// --- 4. ENVIRONMENT VARIABLES ---
+// --- 5. ENVIRONMENT VARIABLES ---
 const apiKey = (process.env.REAL_GEMINI_KEY || process.env.GEMINI_API_KEY || "").trim();
+if (!apiKey) console.error("❌ Missing Gemini API Key");
+
 const ai = new GoogleGenAI({ apiKey });
 const PAYSTACK_SECRET = process.env.PAYSTACK_SECRET_KEY;
 const PLAN_PRICES = { 'Small': 500, 'Medium': 1000, 'Large': 2000 };
@@ -44,7 +50,7 @@ const getUserCredits = async (userId) => {
   } catch (e) { return 10; }
 };
 
-// --- 5. API ENDPOINTS ---
+// --- 6. API ENDPOINTS ---
 
 app.post("/api/auth/simple", async (req, res) => {
   const { uid } = req.body;
@@ -58,6 +64,7 @@ app.post("/api/auth/simple", async (req, res) => {
 
 app.post("/api/payments/initialize", async (req, res) => {
   const { email, amount, userId, planName } = req.body;
+  // Demo Mode check
   if (PAYSTACK_SECRET === "sk_test_examPLE_demo_key_999") {
     return res.json({ status: true, data: { authorization_url: `${process.env.APP_URL || ''}/payment-success?demo=true&userId=${userId}&credits=${PLAN_PRICES[planName] || 0}` } });
   }
@@ -76,8 +83,8 @@ app.get("/payment-success", async (req, res) => {
   if (demo === "true" && userId && credits && db) {
     await db.run("UPDATE users SET credits = credits + ? WHERE uid = ?", [Number(credits), userId]);
   }
-  const distPath = path.join(process.cwd(), "dist");
-  res.sendFile(path.join(distPath, "index.html"));
+  // Note: In a decoupled setup, this should ideally redirect back to the Vercel URL
+  res.send("Payment Successful! You can close this tab and return to the app.");
 });
 
 app.post("/ask-question", async (req, res) => {
@@ -87,7 +94,7 @@ app.post("/ask-question", async (req, res) => {
     if (credits < 1) return res.status(403).json({ error: "No credits" });
     res.setHeader('Content-Type', 'text/event-stream');
     const stream = await ai.models.generateContentStream({
-      model: "gemini-3.1-flash-lite-preview",
+      model: "gemini-1.5-flash",
       contents: [{ role: "user", parts: [{ text: questionText }] }],
     });
     for await (const chunk of stream) { if (chunk.text) res.write(`data: ${JSON.stringify({ text: chunk.text })}\n\n`); }
@@ -113,7 +120,7 @@ app.post("/get-audio", async (req, res) => {
   const { text } = req.body;
   try {
     const response = await ai.models.generateContent({
-      model: "gemini-2.5-flash-preview-tts",
+      model: "gemini-1.5-flash",
       contents: [{ role: "user", parts: [{ text: `Say this: ${text}` }] }],
       config: { responseModalities: [Modality.AUDIO], speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: 'Kore' } } } },
     });
@@ -138,26 +145,20 @@ app.post("/api/whatsapp/message", async (req, res) => {
   } catch (err) { res.status(500).json({ error: "WhatsApp failed" }); }
 });
 
-// --- 6. PRODUCTION FRONTEND SERVING (Smart UI Handling) ---
-const distPath = path.join(process.cwd(), "dist");
-app.use(express.static(distPath));
-
-// This handles the root "/" and all other frontend routes
-app.get("*", (req, res) => {
-  const indexPath = path.join(distPath, "index.html");
-  if (fs.existsSync(indexPath)) {
-    res.sendFile(indexPath);
-  } else {
-    // Fallback for health checks if the build is missing
-    res.status(200).send("ExamPLE API is live 🚀 (App is starting...)");
-  }
+// --- 7. API STATUS ---
+app.get("/", (req, res) => {
+  res.json({ 
+    message: "ExamPLE API is online", 
+    status: "ready",
+    endpoints: ["/ask-question", "/get-audio", "/register-school", "/school-login"] 
+  });
 });
 
-// --- 7. GLOBAL ERROR HANDLING ---
+// --- 8. GLOBAL ERROR HANDLING ---
 process.on("uncaughtException", (err) => { console.error("Uncaught Exception:", err); });
 process.on("unhandledRejection", (err) => { console.error("Unhandled Rejection:", err); });
 
-// --- 8. SERVER START ---
+// --- 9. SERVER START (AT THE VERY END) ---
 app.listen(PORT, "0.0.0.0", () => {
   console.log(`🚀 ExamPLE running on port ${PORT}`);
 });
