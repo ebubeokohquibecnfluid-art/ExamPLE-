@@ -146,12 +146,59 @@ app.post("/get-audio", async (req, res) => {
   const { text } = req.body;
   try {
     const response = await ai.models.generateContent({
-      model: "gemini-2.5-flash",
-      contents: [{ role: "user", parts: [{ text: `Say this: ${text}` }] }],
-      config: { responseModalities: [Modality.AUDIO], speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: 'Kore' } } } },
+      model: "gemini-2.5-flash-preview-tts",
+      contents: [{ role: "user", parts: [{ text: `Say this clearly: ${text}` }] }],
+      config: {
+        responseModalities: [Modality.AUDIO],
+        speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: 'Kore' } } }
+      },
     });
-    res.json({ audio: response.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data });
-  } catch (err) { res.status(500).json({ error: "Audio failed" }); }
+    const audioData = response.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
+    if (!audioData) {
+      console.error("❌ No audio data returned from TTS model");
+      return res.status(500).json({ error: "No audio generated" });
+    }
+    res.json({ audio: audioData });
+  } catch (err: any) {
+    console.error("❌ get-audio error:", err?.message || err);
+    res.status(500).json({ error: "Audio failed" });
+  }
+});
+
+app.post("/api/transcribe", async (req, res) => {
+  const { audioBase64 } = req.body;
+  if (!audioBase64) return res.status(400).json({ error: "No audio provided" });
+  try {
+    // audioBase64 is a data URL like "data:audio/webm;base64,XXXX"
+    const base64Data = audioBase64.includes(',') ? audioBase64.split(',')[1] : audioBase64;
+    const mimeType = audioBase64.includes('data:') ? audioBase64.split(';')[0].split(':')[1] : 'audio/webm';
+    const response = await ai.models.generateContent({
+      model: "gemini-2.5-flash",
+      contents: [{
+        role: "user",
+        parts: [
+          { inlineData: { mimeType, data: base64Data } },
+          { text: "Transcribe the spoken words in this audio. Return only the transcribed text, nothing else." }
+        ]
+      }],
+    });
+    const text = response.candidates?.[0]?.content?.parts?.[0]?.text || "";
+    console.log(`✅ Transcribed: "${text.substring(0, 60)}"`);
+    res.json({ text });
+  } catch (err: any) {
+    console.error("❌ transcribe error:", err?.message || err);
+    res.status(500).json({ error: "Transcription failed" });
+  }
+});
+
+app.get("/api/schools/by-slug/:slug", (req, res) => {
+  const { slug } = req.params;
+  if (!db) return res.status(500).json({ error: "DB missing" });
+  try {
+    const school = db.prepare("SELECT school_id, school_name, school_slug, referral_code, total_students, total_earnings FROM schools WHERE school_slug = ?").get(slug) as any;
+    if (!school) return res.status(404).json({ error: "School not found" });
+    res.json(school);
+  } catch (err) { res.status(500).json({ error: "Failed to fetch school" }); }
 });
 
 app.post("/api/whatsapp/message", (req, res) => {
