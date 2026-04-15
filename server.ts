@@ -108,7 +108,7 @@ app.post("/ask-question", async (req, res) => {
     res.setHeader('Content-Type', 'text/event-stream');
     console.log(`📨 Question from ${user_id}: ${questionText?.substring(0, 50)}`);
     const stream = await ai.models.generateContentStream({
-      model: "gemini-1.5-flash",
+      model: "gemini-2.5-flash",
       contents: [{ role: "user", parts: [{ text: questionText }] }],
     });
     let chunkCount = 0;
@@ -146,7 +146,7 @@ app.post("/get-audio", async (req, res) => {
   const { text } = req.body;
   try {
     const response = await ai.models.generateContent({
-      model: "gemini-1.5-flash",
+      model: "gemini-2.5-flash",
       contents: [{ role: "user", parts: [{ text: `Say this: ${text}` }] }],
       config: { responseModalities: [Modality.AUDIO], speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: 'Kore' } } } },
     });
