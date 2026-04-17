@@ -1,6 +1,7 @@
 import express from "express";
 import axios from "axios";
 import cors from "cors";
+import { createHmac, timingSafeEqual } from "crypto";
 import { GoogleGenAI, Modality } from "@google/genai";
 import { getDb } from "./src/db.js";
 
@@ -367,19 +368,29 @@ app.post("/api/whatsapp/message", (req, res) => {
   } catch (err) { res.status(500).json({ error: "WhatsApp failed" }); }
 });
 
-// --- 7. ADMIN ROUTES (server-side auth) ---
+// --- 7. ADMIN ROUTES (HMAC-signed tokens, survive restarts) ---
 
-// In-memory session store: token → expiry timestamp
-const adminSessions = new Map<string, number>();
+const signAdminToken = (secret: string): string => {
+  const ts = Date.now().toString();
+  const sig = createHmac('sha256', secret).update(ts).digest('hex');
+  return `${ts}.${sig}`;
+};
+
+const verifyAdminToken = (token: string): boolean => {
+  const secret = process.env.ADMIN_SECRET;
+  if (!secret || !token) return false;
+  const [ts, sig] = token.split('.');
+  if (!ts || !sig) return false;
+  if (Date.now() - Number(ts) > 24 * 60 * 60 * 1000) return false; // 24h expiry
+  const expected = createHmac('sha256', secret).update(ts).digest('hex');
+  try {
+    return timingSafeEqual(Buffer.from(sig, 'hex'), Buffer.from(expected, 'hex'));
+  } catch { return false; }
+};
 
 const requireAdmin = (req: any, res: any, next: any) => {
   const token = req.headers.authorization?.replace('Bearer ', '');
-  if (!token) return res.status(401).json({ error: "Unauthorized" });
-  const expiry = adminSessions.get(token);
-  if (!expiry || Date.now() > expiry) {
-    adminSessions.delete(token);
-    return res.status(401).json({ error: "Session expired" });
-  }
+  if (!verifyAdminToken(token)) return res.status(401).json({ error: "Unauthorized" });
   next();
 };
 
@@ -388,8 +399,7 @@ app.post("/admin/login", (req, res) => {
   const secret = process.env.ADMIN_SECRET;
   if (!secret) return res.status(500).json({ error: "Admin not configured" });
   if (password !== secret) return res.status(401).json({ error: "Invalid password" });
-  const token = `${Math.random().toString(36).slice(2)}${Math.random().toString(36).slice(2)}${Date.now().toString(36)}`;
-  adminSessions.set(token, Date.now() + 24 * 60 * 60 * 1000); // 24h expiry
+  const token = signAdminToken(secret);
   console.log("🛡️ Admin login successful");
   res.json({ token });
 });
@@ -397,18 +407,18 @@ app.post("/admin/login", (req, res) => {
 app.get("/admin/stats", requireAdmin, (req, res) => {
   if (!db) return res.status(500).json({ error: "DB missing" });
   try {
-    const total_users = (db.prepare("SELECT COUNT(*) as c FROM users").get() as any)?.c || 0;
-    const total_schools = (db.prepare("SELECT COUNT(*) as c FROM schools").get() as any)?.c || 0;
-    const total_revenue = (db.prepare("SELECT SUM(total_earnings) as s FROM schools").get() as any)?.s || 0;
-    const pending_withdrawals = (db.prepare("SELECT COUNT(*) as c FROM withdrawals WHERE status = 'pending'").get() as any)?.c || 0;
-    res.json({ total_users, total_schools, total_revenue, pending_withdrawals });
+    const totalUsers = (db.prepare("SELECT COUNT(*) as c FROM users").get() as any)?.c || 0;
+    const totalSchools = (db.prepare("SELECT COUNT(*) as c FROM schools").get() as any)?.c || 0;
+    const totalRevenue = (db.prepare("SELECT SUM(total_earnings) as s FROM schools").get() as any)?.s || 0;
+    const totalWithdrawals = (db.prepare("SELECT COALESCE(SUM(amount),0) as s FROM withdrawals WHERE status = 'paid'").get() as any)?.s || 0;
+    res.json({ totalUsers, totalSchools, totalRevenue, totalWithdrawals });
   } catch (err) { res.status(500).json({ error: "Stats failed" }); }
 });
 
 app.get("/admin/schools", requireAdmin, (req, res) => {
   if (!db) return res.status(500).json({ error: "DB missing" });
   try {
-    const schools = db.prepare("SELECT school_id, school_name, school_slug, referral_code, total_students, total_earnings FROM schools ORDER BY total_earnings DESC").all();
+    const schools = db.prepare("SELECT school_id, school_name, school_slug, referral_code, total_students, total_earnings FROM schools ORDER BY rowid DESC").all();
     res.json(schools);
   } catch (err) { res.status(500).json({ error: "Schools failed" }); }
 });
@@ -424,7 +434,16 @@ app.get("/admin/withdrawals", requireAdmin, (req, res) => {
 app.get("/admin/activity", requireAdmin, (req, res) => {
   if (!db) return res.status(500).json({ error: "DB missing" });
   try {
-    const activity = db.prepare("SELECT uid, credits, expiry_date, schoolId FROM users ORDER BY rowid DESC LIMIT 20").all();
+    // Combine recent school registrations + withdrawals as an activity feed
+    const recentSchools = db.prepare(
+      "SELECT school_name, 'school_registration' as type, 0 as amount, school_id as id FROM schools ORDER BY rowid DESC LIMIT 10"
+    ).all() as any[];
+    const recentWithdrawals = db.prepare(
+      "SELECT school_name, 'withdrawal' as type, amount, id, timestamp FROM withdrawals ORDER BY timestamp DESC LIMIT 10"
+    ).all() as any[];
+    const activity = [...recentSchools.map((s: any) => ({ ...s, timestamp: new Date().toISOString() })), ...recentWithdrawals]
+      .sort((a: any, b: any) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
+      .slice(0, 15);
     res.json(activity);
   } catch (err) { res.status(500).json({ error: "Activity failed" }); }
 });
