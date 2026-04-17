@@ -109,26 +109,17 @@ function AdminDashboard({ showToast }: { showToast: (msg: string, type?: 'succes
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
 
-  const getToken = () => localStorage.getItem('admin_token') || '';
+  const ADMIN_SECRET = "exam-admin-2026";
 
-  const fetchData = async (token?: string) => {
-    const auth = token || getToken();
+  const fetchData = async () => {
     try {
-      const headers = { 'Authorization': `Bearer ${auth}` };
+      const headers = { 'Authorization': `Bearer ${ADMIN_SECRET}` };
       const [statsRes, schoolsRes, withdrawalsRes, activityRes] = await Promise.all([
         fetch(`${API_BASE_URL}/admin/stats`, { headers }),
         fetch(`${API_BASE_URL}/admin/schools`, { headers }),
         fetch(`${API_BASE_URL}/admin/withdrawals`, { headers }),
         fetch(`${API_BASE_URL}/admin/activity`, { headers })
       ]);
-
-      if (statsRes.status === 401 || schoolsRes.status === 401) {
-        localStorage.removeItem('admin_token');
-        setIsAuthenticated(false);
-        setLoading(false);
-        return;
-      }
-
       if (statsRes.ok && schoolsRes.ok && withdrawalsRes.ok && activityRes.ok) {
         setStats(await statsRes.json());
         setSchools(await schoolsRes.json());
@@ -145,31 +136,24 @@ function AdminDashboard({ showToast }: { showToast: (msg: string, type?: 'succes
   };
 
   useEffect(() => {
-    const savedToken = localStorage.getItem('admin_token');
-    if (savedToken) {
+    const savedAuth = localStorage.getItem('admin_auth');
+    if (savedAuth === ADMIN_SECRET) {
       setIsAuthenticated(true);
-      fetchData(savedToken);
+      fetchData();
     } else {
       setLoading(false);
     }
   }, []);
 
-  const handleLogin = async (e: React.FormEvent) => {
+  const handleLogin = (e: React.FormEvent) => {
     e.preventDefault();
-    try {
-      const res = await fetch(`${API_BASE_URL}/admin/login`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ password })
-      });
-      if (!res.ok) { showToast("Invalid password", "error"); return; }
-      const { token } = await res.json();
-      localStorage.setItem('admin_token', token);
+    if (password === ADMIN_SECRET) {
       setIsAuthenticated(true);
+      localStorage.setItem('admin_auth', ADMIN_SECRET);
       setLoading(true);
-      fetchData(token);
-    } catch {
-      showToast("Connection error", "error");
+      fetchData();
+    } else {
+      showToast("Invalid password", "error");
     }
   };
 
@@ -177,9 +161,9 @@ function AdminDashboard({ showToast }: { showToast: (msg: string, type?: 'succes
     try {
       const res = await fetch(`${API_BASE_URL}/admin/withdrawals/mark-paid`, {
         method: 'POST',
-        headers: { 
+        headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${getToken()}`
+          'Authorization': `Bearer ${ADMIN_SECRET}`
         },
         body: JSON.stringify({ withdrawal_id: id })
       });
@@ -247,7 +231,7 @@ function AdminDashboard({ showToast }: { showToast: (msg: string, type?: 'succes
         </div>
         <button 
           onClick={() => {
-            localStorage.removeItem('admin_token');
+            localStorage.removeItem('admin_auth');
             setIsAuthenticated(false);
           }}
           className="p-2 hover:bg-white/10 rounded-full transition-all"
