@@ -152,7 +152,7 @@ app.get("/payment-success", (req: any, res: any) => {
 app.post("/ask-question", async (req, res) => {
   const { user_id, questionText, isVoice } = req.body;
   const cost = isVoice ? 2 : 1;
-  const MODELS = ["gemini-2.5-flash", "gemini-2.0-flash-001", "gemini-2.0-flash-lite-001"];
+  const MODELS = ["gemini-2.5-flash", "gemini-2.5-pro", "gemini-2.0-flash-lite-001"];
   try {
     const credits = getUserCredits(user_id);
     if (credits < cost) return res.status(403).json({ error: "Not enough units" });
@@ -169,12 +169,8 @@ app.post("/ask-question", async (req, res) => {
         usedModel = model;
         break;
       } catch (modelErr: any) {
-        const msg = modelErr?.message || String(modelErr);
-        if (msg.includes("503") || msg.includes("UNAVAILABLE") || msg.includes("high demand")) {
-          console.warn(`⚠️ ${model} unavailable, trying next...`);
-          continue;
-        }
-        throw modelErr;
+        console.warn(`⚠️ ${model} failed, trying next...`);
+        continue;
       }
     }
     if (!stream) throw new Error("All models unavailable");
