@@ -142,6 +142,19 @@ app.post("/register-school", (req, res) => {
   } catch (err) { res.status(500).json({ error: "Registration failed" }); }
 });
 
+app.post("/school-login", (req, res) => {
+  const { school_slug, password } = req.body;
+  if (!school_slug || !password || !db) return res.status(400).json({ error: "Missing data" });
+  try {
+    const school = db.prepare("SELECT password FROM schools WHERE school_slug = ?").get(school_slug) as any;
+    if (!school) return res.status(404).json({ error: "School not found" });
+    if (school.password !== password) return res.status(401).json({ error: "Invalid password" });
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: "Login failed" });
+  }
+});
+
 app.post("/get-audio", async (req, res) => {
   const { text } = req.body;
   try {
