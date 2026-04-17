@@ -152,15 +152,32 @@ app.get("/payment-success", (req: any, res: any) => {
 app.post("/ask-question", async (req, res) => {
   const { user_id, questionText, isVoice } = req.body;
   const cost = isVoice ? 2 : 1;
+  const MODELS = ["gemini-2.5-flash", "gemini-2.0-flash-001", "gemini-2.0-flash-lite-001"];
   try {
     const credits = getUserCredits(user_id);
     if (credits < cost) return res.status(403).json({ error: "Not enough units" });
     res.setHeader('Content-Type', 'text/event-stream');
     console.log(`📨 Question from ${user_id}: ${questionText?.substring(0, 50)}`);
-    const stream = await ai.models.generateContentStream({
-      model: "gemini-2.5-flash",
-      contents: [{ role: "user", parts: [{ text: questionText }] }],
-    });
+    let stream: any = null;
+    let usedModel = "";
+    for (const model of MODELS) {
+      try {
+        stream = await ai.models.generateContentStream({
+          model,
+          contents: [{ role: "user", parts: [{ text: questionText }] }],
+        });
+        usedModel = model;
+        break;
+      } catch (modelErr: any) {
+        const msg = modelErr?.message || String(modelErr);
+        if (msg.includes("503") || msg.includes("UNAVAILABLE") || msg.includes("high demand")) {
+          console.warn(`⚠️ ${model} unavailable, trying next...`);
+          continue;
+        }
+        throw modelErr;
+      }
+    }
+    if (!stream) throw new Error("All models unavailable");
     let chunkCount = 0;
     for await (const chunk of stream) {
       const text = chunk.text;
@@ -169,12 +186,13 @@ app.post("/ask-question", async (req, res) => {
         chunkCount++;
       }
     }
-    console.log(`✅ Streamed ${chunkCount} chunks for ${user_id}`);
+    console.log(`✅ Streamed ${chunkCount} chunks via ${usedModel} for ${user_id}`);
     if (db) db.prepare("UPDATE users SET credits = MAX(0, credits - ?) WHERE uid = ?").run(cost, user_id);
     res.write(`data: [DONE]\n\n`);
     res.end();
   } catch (e: any) {
     console.error("❌ ask-question error:", e?.message || e);
+    res.write(`data: ${JSON.stringify({ text: "Sorry, the AI is very busy right now. Please try again in a moment!" })}\n\n`);
     res.write(`data: [DONE]\n\n`);
     res.end();
   }
@@ -257,10 +275,10 @@ app.post("/get-audio", async (req, res) => {
     }
     const response = await ai.models.generateContent({
       model: "gemini-2.5-flash-preview-tts",
-      contents: [{ role: "user", parts: [{ text: `Say this clearly: ${text}` }] }],
+      contents: [{ role: "user", parts: [{ text: `Say this in a warm, natural Nigerian English accent — confident and friendly, like a knowledgeable Nigerian teacher explaining to a student:\n\n${text}` }] }],
       config: {
         responseModalities: [Modality.AUDIO],
-        speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: 'Kore' } } }
+        speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: 'Puck' } } }
       },
     });
     const audioData = response.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
