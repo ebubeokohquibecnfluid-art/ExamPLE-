@@ -155,6 +155,47 @@ app.post("/school-login", (req, res) => {
   }
 });
 
+app.post("/school-dashboard", (req, res) => {
+  const { school_slug } = req.body;
+  if (!school_slug || !db) return res.status(400).json({ error: "Missing data" });
+  try {
+    const school = db.prepare("SELECT school_id, school_name, school_slug, referral_code, total_students, total_earnings FROM schools WHERE school_slug = ?").get(school_slug) as any;
+    if (!school) return res.status(404).json({ error: "School not found" });
+    // Live student count from users table
+    const studentRow = db.prepare("SELECT COUNT(*) as count FROM users WHERE schoolId = ?").get(school.school_id) as any;
+    const student_count = studentRow?.count || 0;
+    // Update total_students if changed
+    if (student_count !== school.total_students) {
+      db.prepare("UPDATE schools SET total_students = ? WHERE school_id = ?").run(student_count, school.school_id);
+      school.total_students = student_count;
+    }
+    // Recent withdrawals
+    const withdrawals = db.prepare("SELECT * FROM withdrawals WHERE school_id = ? ORDER BY timestamp DESC LIMIT 10").all(school.school_id);
+    res.json({ ...school, student_count, withdrawals });
+  } catch (err) {
+    console.error("❌ school-dashboard error:", err);
+    res.status(500).json({ error: "Failed to load dashboard" });
+  }
+});
+
+app.post("/request-withdrawal", (req, res) => {
+  const { school_id, amount } = req.body;
+  if (!school_id || !amount || !db) return res.status(400).json({ error: "Missing data" });
+  try {
+    const school = db.prepare("SELECT * FROM schools WHERE school_id = ?").get(school_id) as any;
+    if (!school) return res.status(404).json({ error: "School not found" });
+    if (amount < 5000) return res.status(400).json({ error: "Minimum withdrawal is ₦5,000" });
+    if (amount > school.total_earnings) return res.status(400).json({ error: "Insufficient balance" });
+    const id = `wd_${Math.random().toString(36).substring(2, 10)}`;
+    db.prepare("INSERT INTO withdrawals (id, school_id, school_name, amount, status) VALUES (?, ?, ?, ?, 'pending')").run(id, school_id, school.school_name, amount);
+    db.prepare("UPDATE schools SET total_earnings = total_earnings - ? WHERE school_id = ?").run(amount, school_id);
+    res.json({ message: "Withdrawal request submitted successfully. You will be contacted within 24 hours." });
+  } catch (err) {
+    console.error("❌ request-withdrawal error:", err);
+    res.status(500).json({ error: "Withdrawal request failed" });
+  }
+});
+
 app.post("/get-audio", async (req, res) => {
   const { text } = req.body;
   try {
