@@ -377,7 +377,7 @@ const signAdminToken = (secret: string): string => {
 };
 
 const verifyAdminToken = (token: string): boolean => {
-  const secret = process.env.ADMIN_SECRET;
+  const secret = (process.env.ADMIN_SECRET || '').trim();
   if (!secret || !token) return false;
   const [ts, sig] = token.split('.');
   if (!ts || !sig) return false;
@@ -396,9 +396,11 @@ const requireAdmin = (req: any, res: any, next: any) => {
 
 app.post("/admin/login", (req, res) => {
   const { password } = req.body;
-  const secret = process.env.ADMIN_SECRET;
+  const secret = (process.env.ADMIN_SECRET || '').trim();
   if (!secret) return res.status(500).json({ error: "Admin not configured" });
-  if (password !== secret) return res.status(401).json({ error: "Invalid password" });
+  const attempt = (password || '').trim();
+  console.log(`🛡️ Admin login attempt (secret length: ${secret.length}, attempt length: ${attempt.length})`);
+  if (attempt !== secret) return res.status(401).json({ error: "Invalid password" });
   const token = signAdminToken(secret);
   console.log("🛡️ Admin login successful");
   res.json({ token });
