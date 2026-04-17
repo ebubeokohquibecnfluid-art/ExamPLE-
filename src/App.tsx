@@ -611,7 +611,7 @@ function SchoolDashboard({ showToast }: { showToast: (msg: string, type?: 'succe
         <div className="bg-white p-6 rounded-[32px] border border-slate-200 shadow-sm">
           <h3 className="text-sm font-black text-slate-900 mb-2">Revenue Share</h3>
           <p className="text-xs text-slate-500 leading-relaxed">
-            You earn <span className="text-nigeria-green font-bold">50%</span> of every student subscription. Payments are processed automatically.
+            You earn <span className="text-nigeria-green font-bold">40%</span> of every student subscription. Payments are processed automatically.
           </p>
         </div>
 
