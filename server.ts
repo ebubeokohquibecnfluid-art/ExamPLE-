@@ -183,7 +183,12 @@ app.post("/ask-question", async (req, res) => {
       }
     }
     console.log(`✅ Streamed ${chunkCount} chunks via ${usedModel} for ${user_id}`);
-    if (db) db.prepare("UPDATE users SET credits = MAX(0, credits - ?) WHERE uid = ?").run(cost, user_id);
+    if (db && user_id) {
+      // Ensure row exists, then deduct — handles fresh DB after restarts
+      db.prepare("INSERT OR IGNORE INTO users (uid, credits) VALUES (?, 10)").run(user_id);
+      const result = db.prepare("UPDATE users SET credits = MAX(0, credits - ?) WHERE uid = ?").run(cost, user_id);
+      console.log(`💳 Deducted ${cost} unit(s) from ${user_id} (rows updated: ${result.changes})`);
+    }
     res.write(`data: [DONE]\n\n`);
     res.end();
   } catch (e: any) {
@@ -265,9 +270,11 @@ app.post("/get-audio", async (req, res) => {
   try {
     // Deduct 1 unit for audio/voice explanation
     if (user_id && db) {
+      db.prepare("INSERT OR IGNORE INTO users (uid, credits) VALUES (?, 10)").run(user_id);
       const credits = getUserCredits(user_id);
       if (credits < 1) return res.status(403).json({ error: "No units for audio" });
       db.prepare("UPDATE users SET credits = MAX(0, credits - 1) WHERE uid = ?").run(user_id);
+      console.log(`💳 Deducted 1 unit (audio) from ${user_id}`);
     }
     const response = await ai.models.generateContent({
       model: "gemini-2.5-flash-preview-tts",

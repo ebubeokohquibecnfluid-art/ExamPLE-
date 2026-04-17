@@ -9,9 +9,8 @@ let db: Database.Database | null = null;
 export async function getDb() {
   if (db) return db;
 
-  const dbPath = process.env.NODE_ENV === 'production'
-    ? '/tmp/database.sqlite'
-    : path.join(__dirname, '..', 'database.sqlite');
+  const dbPath = process.env.DB_PATH
+    || (process.env.NODE_ENV === 'production' ? '/home/user/database.sqlite' : path.join(__dirname, '..', 'database.sqlite'));
 
   db = new Database(dbPath);
 
