@@ -367,7 +367,79 @@ app.post("/api/whatsapp/message", (req, res) => {
   } catch (err) { res.status(500).json({ error: "WhatsApp failed" }); }
 });
 
-// --- 7. API STATUS ---
+// --- 7. ADMIN ROUTES (server-side auth) ---
+
+// In-memory session store: token → expiry timestamp
+const adminSessions = new Map<string, number>();
+
+const requireAdmin = (req: any, res: any, next: any) => {
+  const token = req.headers.authorization?.replace('Bearer ', '');
+  if (!token) return res.status(401).json({ error: "Unauthorized" });
+  const expiry = adminSessions.get(token);
+  if (!expiry || Date.now() > expiry) {
+    adminSessions.delete(token);
+    return res.status(401).json({ error: "Session expired" });
+  }
+  next();
+};
+
+app.post("/admin/login", (req, res) => {
+  const { password } = req.body;
+  const secret = process.env.ADMIN_SECRET;
+  if (!secret) return res.status(500).json({ error: "Admin not configured" });
+  if (password !== secret) return res.status(401).json({ error: "Invalid password" });
+  const token = `${Math.random().toString(36).slice(2)}${Math.random().toString(36).slice(2)}${Date.now().toString(36)}`;
+  adminSessions.set(token, Date.now() + 24 * 60 * 60 * 1000); // 24h expiry
+  console.log("🛡️ Admin login successful");
+  res.json({ token });
+});
+
+app.get("/admin/stats", requireAdmin, (req, res) => {
+  if (!db) return res.status(500).json({ error: "DB missing" });
+  try {
+    const total_users = (db.prepare("SELECT COUNT(*) as c FROM users").get() as any)?.c || 0;
+    const total_schools = (db.prepare("SELECT COUNT(*) as c FROM schools").get() as any)?.c || 0;
+    const total_revenue = (db.prepare("SELECT SUM(total_earnings) as s FROM schools").get() as any)?.s || 0;
+    const pending_withdrawals = (db.prepare("SELECT COUNT(*) as c FROM withdrawals WHERE status = 'pending'").get() as any)?.c || 0;
+    res.json({ total_users, total_schools, total_revenue, pending_withdrawals });
+  } catch (err) { res.status(500).json({ error: "Stats failed" }); }
+});
+
+app.get("/admin/schools", requireAdmin, (req, res) => {
+  if (!db) return res.status(500).json({ error: "DB missing" });
+  try {
+    const schools = db.prepare("SELECT school_id, school_name, school_slug, referral_code, total_students, total_earnings FROM schools ORDER BY total_earnings DESC").all();
+    res.json(schools);
+  } catch (err) { res.status(500).json({ error: "Schools failed" }); }
+});
+
+app.get("/admin/withdrawals", requireAdmin, (req, res) => {
+  if (!db) return res.status(500).json({ error: "DB missing" });
+  try {
+    const withdrawals = db.prepare("SELECT * FROM withdrawals ORDER BY timestamp DESC LIMIT 50").all();
+    res.json(withdrawals);
+  } catch (err) { res.status(500).json({ error: "Withdrawals failed" }); }
+});
+
+app.get("/admin/activity", requireAdmin, (req, res) => {
+  if (!db) return res.status(500).json({ error: "DB missing" });
+  try {
+    const activity = db.prepare("SELECT uid, credits, expiry_date, schoolId FROM users ORDER BY rowid DESC LIMIT 20").all();
+    res.json(activity);
+  } catch (err) { res.status(500).json({ error: "Activity failed" }); }
+});
+
+app.post("/admin/withdrawals/mark-paid", requireAdmin, (req, res) => {
+  const { withdrawal_id } = req.body;
+  if (!withdrawal_id || !db) return res.status(400).json({ error: "Missing data" });
+  try {
+    db.prepare("UPDATE withdrawals SET status = 'paid' WHERE id = ?").run(withdrawal_id);
+    console.log(`✅ Withdrawal ${withdrawal_id} marked as paid`);
+    res.json({ success: true });
+  } catch (err) { res.status(500).json({ error: "Failed to update" }); }
+});
+
+// --- 8. API STATUS ---
 app.get("/", (req, res) => {
   res.json({
     message: "ExamPLE API is online",
