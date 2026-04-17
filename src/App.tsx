@@ -737,6 +737,8 @@ function MainApp({ user, profile, onLogin, onLogout, refreshProfile, showToast, 
   const [audioUrl, setAudioUrl] = useState<string | null>(null);
   const [activeAudioMessageId, setActiveAudioMessageId] = useState<string | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
+  const audioCacheRef = useRef<Record<string, string>>({});
+  const audioPrefetchingRef = useRef<Set<string>>(new Set());
   const [messages, setMessages] = useState<Message[]>([]);
   const [schoolName, setSchoolName] = useState<string | null>(null);
   const [schoolId, setSchoolId] = useState<string | null>(null);
@@ -1039,6 +1041,31 @@ function MainApp({ user, profile, onLogin, onLogout, refreshProfile, showToast, 
     }
   };
 
+  const buildAudioUrl = async (text: string): Promise<string | null> => {
+    try {
+      const res = await fetch(`${API_BASE_URL}/get-audio`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text, usePidgin, user_id: userId })
+      });
+      const data = await res.json();
+      if (!data.audio) return null;
+      const audioData = Uint8Array.from(atob(data.audio), c => c.charCodeAt(0)).buffer;
+      const int16Array = new Int16Array(audioData);
+      const blob = createWavBlob(int16Array, 24000);
+      return URL.createObjectURL(blob);
+    } catch { return null; }
+  };
+
+  const prefetchAudio = (text: string, messageId: string) => {
+    if (audioCacheRef.current[messageId] || audioPrefetchingRef.current.has(messageId)) return;
+    audioPrefetchingRef.current.add(messageId);
+    buildAudioUrl(text).then(url => {
+      audioPrefetchingRef.current.delete(messageId);
+      if (url) audioCacheRef.current[messageId] = url;
+    });
+  };
+
   const playAudio = async (text: string, messageId: string) => {
     if (activeAudioMessageId === messageId) {
       if (isPlaying) {
@@ -1064,18 +1091,13 @@ function MainApp({ user, profile, onLogin, onLogout, refreshProfile, showToast, 
     setActiveAudioMessageId(messageId);
     
     try {
-      const res = await fetch(`${API_BASE_URL}/get-audio`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ text, usePidgin, user_id: userId })
-      });
-      const data = await res.json();
+      // Use cached audio if already pre-fetched — instant playback
+      let url = audioCacheRef.current[messageId] || null;
+      if (!url) {
+        url = await buildAudioUrl(text);
+      }
       
-      if (data.audio) {
-        const audioData = Uint8Array.from(atob(data.audio), c => c.charCodeAt(0)).buffer;
-        const int16Array = new Int16Array(audioData);
-        const blob = createWavBlob(int16Array, 24000);
-        const url = URL.createObjectURL(blob);
+      if (url) {
         
         const audio = new Audio(url);
         audio.preload = "auto";
@@ -1336,7 +1358,8 @@ function MainApp({ user, profile, onLogin, onLogout, refreshProfile, showToast, 
                       ) : (
                         <Volume2 className="w-4 h-4" />
                       )}
-                      {(isPlaying && activeAudioMessageId === msg.id) ? "Pause" : 
+                      {(audioLoading && activeAudioMessageId === msg.id) ? "Preparing audio..." :
+                       (isPlaying && activeAudioMessageId === msg.id) ? "Pause" : 
                        (activeAudioMessageId === msg.id && !isPlaying) ? "Resume" : "Listen to Explanation"}
                     </button>
                     <span className="text-[10px] text-slate-400">

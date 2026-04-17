@@ -265,6 +265,22 @@ app.post("/request-withdrawal", (req, res) => {
   }
 });
 
+// Strip markdown and trim text for faster TTS processing
+function cleanForTTS(raw: string): string {
+  return raw
+    .replace(/```[\s\S]*?```/g, '')          // code blocks
+    .replace(/`([^`]+)`/g, '$1')             // inline code
+    .replace(/#{1,6}\s+/g, '')               // headings
+    .replace(/\*\*([^*]+)\*\*/g, '$1')       // bold
+    .replace(/\*([^*]+)\*/g, '$1')           // italic
+    .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1') // links
+    .replace(/^\s*[-*+]\s/gm, '')            // bullets
+    .replace(/^\s*\d+\.\s/gm, '')            // numbered lists
+    .replace(/\n{3,}/g, '\n')               // excess newlines
+    .trim()
+    .substring(0, 1200);                     // cap length
+}
+
 app.post("/get-audio", async (req, res) => {
   const { text, user_id } = req.body;
   try {
@@ -276,9 +292,11 @@ app.post("/get-audio", async (req, res) => {
       db.prepare("UPDATE users SET credits = MAX(0, credits - 1) WHERE uid = ?").run(user_id);
       console.log(`💳 Deducted 1 unit (audio) from ${user_id}`);
     }
+    const cleanText = cleanForTTS(text);
+    console.log(`🔊 TTS: ${cleanText.length} chars (was ${text?.length || 0})`);
     const response = await ai.models.generateContent({
       model: "gemini-2.5-flash-preview-tts",
-      contents: [{ role: "user", parts: [{ text: `Say this in a warm, natural Nigerian English accent — confident and friendly, like a knowledgeable Nigerian teacher explaining to a student:\n\n${text}` }] }],
+      contents: [{ role: "user", parts: [{ text: `Say this in a warm, natural Nigerian English accent — confident and friendly, like a knowledgeable Nigerian teacher explaining to a student:\n\n${cleanText}` }] }],
       config: {
         responseModalities: [Modality.AUDIO],
         speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: 'Puck' } } }
