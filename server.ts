@@ -388,10 +388,13 @@ const verifyAdminToken = (token: string): boolean => {
   } catch { return false; }
 };
 
+const LEGACY_ADMIN_PASSWORD = "exam-admin-2026"; // old Vercel frontend bridge — remove after GitHub push
+
 const requireAdmin = (req: any, res: any, next: any) => {
   const token = req.headers.authorization?.replace('Bearer ', '');
-  if (!verifyAdminToken(token)) return res.status(401).json({ error: "Unauthorized" });
-  next();
+  // Accept HMAC token (new frontend) OR legacy raw password (old Vercel frontend)
+  if (token === LEGACY_ADMIN_PASSWORD || verifyAdminToken(token)) { next(); return; }
+  return res.status(401).json({ error: "Unauthorized" });
 };
 
 app.post("/admin/login", (req, res) => {
@@ -400,7 +403,8 @@ app.post("/admin/login", (req, res) => {
   if (!secret) return res.status(500).json({ error: "Admin not configured" });
   const attempt = (password || '').trim();
   console.log(`🛡️ Admin login attempt (secret length: ${secret.length}, attempt length: ${attempt.length})`);
-  if (attempt !== secret) return res.status(401).json({ error: "Invalid password" });
+  const legacyPassword = "exam-admin-2026"; // supports old Vercel frontend until GitHub is updated
+  if (attempt !== secret && attempt !== legacyPassword) return res.status(401).json({ error: "Invalid password" });
   const token = signAdminToken(secret);
   console.log("🛡️ Admin login successful");
   res.json({ token });
