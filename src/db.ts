@@ -16,7 +16,7 @@ export async function getDb() {
   db = new Database(dbPath);
 
   db.exec(`
-    CREATE TABLE IF NOT EXISTS users (uid TEXT PRIMARY KEY, credits INTEGER DEFAULT 10, schoolId TEXT);
+    CREATE TABLE IF NOT EXISTS users (uid TEXT PRIMARY KEY, credits INTEGER DEFAULT 10, schoolId TEXT, expiry_date TEXT);
     CREATE TABLE IF NOT EXISTS schools (school_id TEXT PRIMARY KEY, school_name TEXT, school_slug TEXT UNIQUE, password TEXT, referral_code TEXT UNIQUE, total_students INTEGER DEFAULT 0, total_earnings INTEGER DEFAULT 0);
     CREATE TABLE IF NOT EXISTS withdrawals (id TEXT PRIMARY KEY, school_id TEXT, school_name TEXT, amount INTEGER, status TEXT DEFAULT 'pending', timestamp DATETIME DEFAULT CURRENT_TIMESTAMP);
   `);

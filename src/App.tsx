@@ -887,6 +887,28 @@ function MainApp({ user, profile, onLogin, onLogout, refreshProfile, showToast, 
     }
   }, [school_slug]);
 
+  // Automatic school joining when landing on a school page
+  useEffect(() => {
+    if (schoolId && userId !== 'guest' && profile && profile.schoolId !== schoolId) {
+      const autoJoin = async () => {
+        try {
+          const res = await fetch(`${API_BASE_URL}/api/whatsapp/message`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ user_id: userId, user_message: `JOIN ${schoolId}` })
+          });
+          if (res.ok) {
+            refreshProfile();
+            showToast(`Automatically joined ${schoolName || 'school'}!`, 'success');
+          }
+        } catch (e) {
+          console.error("Auto-join failed", e);
+        }
+      };
+      autoJoin();
+    }
+  }, [schoolId, userId, profile?.schoolId, schoolName]);
+
   // Auto-scroll to bottom of chat
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -952,7 +974,8 @@ function MainApp({ user, profile, onLogin, onLogout, refreshProfile, showToast, 
           usePidgin,
           imageBase64: userMsg.image,
           school_id: schoolId,
-          school_slug: school_slug
+          school_slug: school_slug,
+          isVoice: isRecording
         })
       });
 
@@ -1044,7 +1067,7 @@ function MainApp({ user, profile, onLogin, onLogout, refreshProfile, showToast, 
       const res = await fetch(`${API_BASE_URL}/get-audio`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ text, usePidgin })
+        body: JSON.stringify({ text, usePidgin, user_id: userId })
       });
       const data = await res.json();
       
@@ -1510,9 +1533,10 @@ function MainApp({ user, profile, onLogin, onLogout, refreshProfile, showToast, 
 
               <div className="space-y-3">
                 {[
-                  { name: 'Small', price: 1000, credits: 20, color: 'bg-blue-50 border-blue-100 text-blue-700' },
-                  { name: 'Medium', price: 2000, credits: 50, color: 'bg-green-50 border-green-100 text-green-700' },
-                  { name: 'Large', price: 6000, credits: 200, color: 'bg-purple-50 border-purple-100 text-purple-700' },
+                  { name: 'Basic', price: 2500, credits: 50, color: 'bg-blue-50 border-blue-100 text-blue-700' },
+                  { name: 'Premium', price: 4500, credits: 100, color: 'bg-green-50 border-green-100 text-green-700' },
+                  { name: 'Max', price: 6500, credits: 250, color: 'bg-purple-50 border-purple-100 text-purple-700' },
+                  { name: 'Top-up', price: 500, credits: 10, color: 'bg-yellow-50 border-yellow-100 text-yellow-700' },
                 ].map((plan) => (
                   <button
                     key={plan.name}
@@ -1523,12 +1547,14 @@ function MainApp({ user, profile, onLogin, onLogout, refreshProfile, showToast, 
                     )}
                   >
                     <div className="text-left">
-                      <p className="text-xs font-black uppercase tracking-widest opacity-60 mb-1">{plan.name}</p>
+                      <p className="text-xs font-black uppercase tracking-widest opacity-60 mb-1">
+                        {plan.name} {plan.name !== 'Top-up' && "(30 Days)"}
+                      </p>
                       <p className="text-2xl font-black">₦{plan.price.toLocaleString()}</p>
                     </div>
                     <div className="text-right">
                       <p className="text-xl font-black">{plan.credits}</p>
-                      <p className="text-[10px] font-bold uppercase opacity-60">Credits</p>
+                      <p className="text-[10px] font-bold uppercase opacity-60">Units</p>
                     </div>
                   </button>
                 ))}

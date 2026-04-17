@@ -45,6 +45,8 @@ getDb()
   .then(database => {
     db = database;
     console.log("✅ Database connected");
+    // Migrate existing tables to add new columns if missing
+    try { db.prepare("ALTER TABLE users ADD COLUMN expiry_date TEXT").run(); } catch (_) {}
   })
   .catch(err => {
     console.error("❌ DB Connection Error:", err);
@@ -60,14 +62,27 @@ if (!apiKey) {
 
 const ai = new GoogleGenAI({ apiKey });
 const PAYSTACK_SECRET = process.env.PAYSTACK_SECRET_KEY;
-const PLAN_PRICES: Record<string, number> = { 'Small': 500, 'Medium': 1000, 'Large': 2000 };
 
-// Helper for credits
+// Pricing: name → Naira price
+const PLAN_PRICES: Record<string, number> = { 'Basic': 2500, 'Premium': 4500, 'Max': 6500, 'Top-up': 500 };
+// Pricing: name → units granted
+const PLAN_UNITS: Record<string, number> = { 'Basic': 50, 'Premium': 100, 'Max': 250, 'Top-up': 10 };
+
+// Helper for credits — checks expiry date
 const getUserCredits = (userId: string): number => {
   if (!db) return 10;
   try {
-    const user = db.prepare("SELECT credits FROM users WHERE uid = ?").get(userId) as any;
-    return user ? user.credits : 10;
+    const user = db.prepare("SELECT credits, expiry_date FROM users WHERE uid = ?").get(userId) as any;
+    if (!user) return 10;
+    // Check for expiration (non-top-up credits expire after 30 days)
+    if (user.expiry_date) {
+      const expiry = new Date(user.expiry_date);
+      if (expiry < new Date()) {
+        db.prepare("UPDATE users SET credits = 0, expiry_date = NULL WHERE uid = ?").run(userId);
+        return 0;
+      }
+    }
+    return user.credits;
   } catch (e) { return 10; }
 };
 
@@ -85,26 +100,61 @@ app.post("/api/auth/simple", (req, res) => {
 
 app.post("/api/payments/initialize", async (req, res) => {
   const { email, amount, userId, planName } = req.body;
+  const units = PLAN_UNITS[planName] || 0;
   const frontendUrl = process.env.APP_URL || process.env.FRONTEND_URL || '';
   // Demo Mode check
   if (PAYSTACK_SECRET === "sk_test_examPLE_demo_key_999") {
-    return res.json({ status: true, data: { authorization_url: `${frontendUrl}/payment-success?demo=true&userId=${userId}&credits=${PLAN_PRICES[planName] || 0}` } });
+    return res.json({ status: true, data: { authorization_url: `${frontendUrl}/payment-success?demo=true&userId=${userId}&credits=${units}&amount=${amount}&planName=${planName}` } });
   }
   if (!PAYSTACK_SECRET) return res.status(500).json({ error: "Paystack not configured" });
   try {
     const response = await axios.post("https://api.paystack.co/transaction/initialize", {
-      email, amount: amount * 100, metadata: { userId, planName, credits: PLAN_PRICES[planName] || 0 },
+      email, amount: amount * 100,
+      metadata: { userId, planName, credits: units, amount },
       callback_url: `${frontendUrl}/payment-success`
     }, { headers: { Authorization: `Bearer ${PAYSTACK_SECRET}` } });
     res.json(response.data);
   } catch (err) { res.status(500).json({ error: "Payment failed" }); }
 });
 
+// Payment success: handles Paystack webhook / redirect — grants credits, sets expiry, 40% school commission
+app.get("/payment-success", (req: any, res: any) => {
+  const { demo, userId, credits, amount, planName } = req.query;
+  const creditAmount = Number(credits);
+  const payAmount = Number(amount);
+  if (demo === "true" && userId && creditAmount && db) {
+    const isTopUp = planName === 'Top-up';
+    // Set 30-day expiry only for non-Top-up plans
+    const expiry = new Date();
+    expiry.setDate(expiry.getDate() + 30);
+    const expiryStr = isTopUp ? null : expiry.toISOString();
+    if (expiryStr) {
+      db.prepare("UPDATE users SET credits = credits + ?, expiry_date = ? WHERE uid = ?").run(creditAmount, expiryStr, userId);
+    } else {
+      db.prepare("UPDATE users SET credits = credits + ? WHERE uid = ?").run(creditAmount, userId);
+    }
+    // 40% school commission on payment
+    if (payAmount > 0) {
+      const user = db.prepare("SELECT schoolId FROM users WHERE uid = ?").get(userId) as any;
+      if (user?.schoolId) {
+        const schoolComm = payAmount * 0.4;
+        db.prepare("UPDATE schools SET total_earnings = total_earnings + ?, total_students = (SELECT COUNT(*) FROM users WHERE schoolId = schools.school_id) WHERE school_id = ?").run(schoolComm, user.schoolId);
+        console.log(`💰 School commission: ₦${schoolComm} to school ${user.schoolId}`);
+      }
+    }
+    console.log(`✅ Payment success: ${creditAmount} units → user ${userId}`);
+  }
+  // Redirect back to the frontend
+  const frontendUrl = process.env.APP_URL || process.env.FRONTEND_URL || '/';
+  res.redirect(frontendUrl);
+});
+
 app.post("/ask-question", async (req, res) => {
-  const { user_id, questionText } = req.body;
+  const { user_id, questionText, isVoice } = req.body;
+  const cost = isVoice ? 2 : 1;
   try {
     const credits = getUserCredits(user_id);
-    if (credits < 1) return res.status(403).json({ error: "No credits" });
+    if (credits < cost) return res.status(403).json({ error: "Not enough units" });
     res.setHeader('Content-Type', 'text/event-stream');
     console.log(`📨 Question from ${user_id}: ${questionText?.substring(0, 50)}`);
     const stream = await ai.models.generateContentStream({
@@ -120,7 +170,7 @@ app.post("/ask-question", async (req, res) => {
       }
     }
     console.log(`✅ Streamed ${chunkCount} chunks for ${user_id}`);
-    if (db) db.prepare("UPDATE users SET credits = MAX(0, credits - 1) WHERE uid = ?").run(user_id);
+    if (db) db.prepare("UPDATE users SET credits = MAX(0, credits - ?) WHERE uid = ?").run(cost, user_id);
     res.write(`data: [DONE]\n\n`);
     res.end();
   } catch (e: any) {
@@ -197,8 +247,14 @@ app.post("/request-withdrawal", (req, res) => {
 });
 
 app.post("/get-audio", async (req, res) => {
-  const { text } = req.body;
+  const { text, user_id } = req.body;
   try {
+    // Deduct 1 unit for audio/voice explanation
+    if (user_id && db) {
+      const credits = getUserCredits(user_id);
+      if (credits < 1) return res.status(403).json({ error: "No units for audio" });
+      db.prepare("UPDATE users SET credits = MAX(0, credits - 1) WHERE uid = ?").run(user_id);
+    }
     const response = await ai.models.generateContent({
       model: "gemini-2.5-flash-preview-tts",
       contents: [{ role: "user", parts: [{ text: `Say this clearly: ${text}` }] }],
