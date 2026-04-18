@@ -19,6 +19,11 @@ app.get("/health", (req, res) => {
 });
 
 // --- 3. EXPRESS CONFIGURATION ---
+app.use((req: any, res, next) => {
+  let data = '';
+  req.on('data', (chunk: Buffer) => { data += chunk; });
+  req.on('end', () => { req.rawBody = data; next(); });
+});
 app.use(express.json({ limit: "50mb" }));
 app.set("trust proxy", 1);
 
@@ -102,34 +107,58 @@ app.post("/api/payments/initialize", async (req, res) => {
   } catch (err) { res.status(500).json({ error: "Payment failed" }); }
 });
 
-app.get("/payment-success", async (req, res) => {
-  const { demo, userId, credits, amount } = req.query;
-  const creditAmount = Number(credits);
-  const payAmount = Number(amount);
-  
-  if (demo === "true" && userId && creditAmount && db) {
-    const expiry = new Date();
-    expiry.setDate(expiry.getDate() + 30);
-    const expiryStr = expiry.toISOString();
-    
-    await db.run("UPDATE users SET credits = credits + ?, expiry_date = ? WHERE uid = ?", [creditAmount, expiryStr, userId]);
-    
-    // Revenue Sharing (40% to school)
-    const user = await db.get("SELECT schoolId FROM users WHERE uid = ?", [userId]);
-    if (user && user.schoolId) {
-      const schoolComm = payAmount * 0.4;
-      await db.run("UPDATE schools SET total_earnings = total_earnings + ? WHERE school_id = ?", [schoolComm, user.schoolId]);
-    }
-    
-    // Log activity
-    await db.run("INSERT INTO activity (type, details, timestamp) VALUES (?, ?, ?)", [
-      'payment', 
-      JSON.stringify({ userId, amount: payAmount, credits: creditAmount }), 
-      new Date().toISOString()
-    ]);
+async function creditUserPayment(userId: string, creditAmount: number, payAmount: number) {
+  if (!db || !userId || !creditAmount) return;
+  const expiry = new Date();
+  expiry.setDate(expiry.getDate() + 30);
+  await db.run("UPDATE users SET credits = credits + ?, expiry_date = ? WHERE uid = ?", [creditAmount, expiry.toISOString(), userId]);
+  const user = await db.get("SELECT schoolId FROM users WHERE uid = ?", [userId]);
+  if (user?.schoolId) {
+    await db.run("UPDATE schools SET total_earnings = total_earnings + ? WHERE school_id = ?", [payAmount * 0.4, user.schoolId]);
   }
+  await db.run("INSERT INTO activity (type, details, timestamp) VALUES (?, ?, ?)", [
+    'payment', JSON.stringify({ userId, amount: payAmount, credits: creditAmount }), new Date().toISOString()
+  ]);
+}
+
+app.get("/payment-success", async (req, res) => {
+  const { demo, userId, credits, amount, reference, trxref } = req.query;
+  const ref = (reference || trxref) as string;
+
+  // Real Paystack payment — verify with API
+  if (ref && PAYSTACK_SECRET && db) {
+    try {
+      const verify = await axios.get(`https://api.paystack.co/transaction/verify/${ref}`, {
+        headers: { Authorization: `Bearer ${PAYSTACK_SECRET}` }
+      });
+      const txn = verify.data?.data;
+      if (txn?.status === "success") {
+        const meta = txn.metadata || {};
+        await creditUserPayment(meta.userId, Number(meta.credits), txn.amount / 100);
+      }
+    } catch (_) {}
+  }
+
+  // Demo mode
+  if (demo === "true") {
+    await creditUserPayment(userId as string, Number(credits), Number(amount));
+  }
+
   const distPath = path.join(process.cwd(), "dist");
   res.sendFile(path.join(distPath, "index.html"));
+});
+
+// Paystack webhook (server-to-server)
+app.post("/api/payments/webhook", async (req: any, res) => {
+  const hash = require("crypto").createHmac("sha512", PAYSTACK_SECRET || "").update(req.rawBody || "").digest("hex");
+  if (hash !== req.headers["x-paystack-signature"]) return res.status(401).send("Invalid signature");
+  const event = req.body;
+  if (event.event === "charge.success" && db) {
+    const txn = event.data;
+    const meta = txn.metadata || {};
+    await creditUserPayment(meta.userId, Number(meta.credits), txn.amount / 100);
+  }
+  res.sendStatus(200);
 });
 
 app.post("/ask-question", async (req, res) => {
