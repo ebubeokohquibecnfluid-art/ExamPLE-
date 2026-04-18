@@ -43,7 +43,7 @@ if (!apiKey) console.error("❌ Missing Gemini API Key");
 
 const ai = new GoogleGenAI({ apiKey });
 const ttsClient = new TextToSpeechClient();
-const PAYSTACK_SECRET = process.env.PAYSTACK_SECRET_KEY || process.env.Test_Secrete_key;
+const PAYSTACK_SECRET = process.env.PAYSTACK_SECRET_KEY;
 const PLAN_PRICES = { 'Basic': 2500, 'Premium': 4500, 'Max': 6500, 'Top-up': 500 };
 const PLAN_UNITS = { 'Basic': 50, 'Premium': 100, 'Max': 250, 'Top-up': 10 };
 
