@@ -27,19 +27,22 @@ let db = null;
 getDb()
   .then(database => {
     db = database;
-    console.log("✅ Database connected");
+    console.log("✅ Database connected in background");
+    
+    // Ensure schema is up to date
+    db.run("ALTER TABLE users ADD COLUMN expiry_date TEXT").catch(() => {});
+    db.run("ALTER TABLE schools ADD COLUMN total_earnings REAL DEFAULT 0").catch(() => {});
   })
   .catch(err => {
     console.error("❌ DB Connection Error:", err);
   });
 
-// --- 5. ENVIRONMENT VARIABLES & CLIENTS ---
+// --- 5. ENVIRONMENT VARIABLES ---
 const apiKey = (process.env.REAL_GEMINI_KEY || process.env.GEMINI_API_KEY || "").trim();
 if (!apiKey) console.error("❌ Missing Gemini API Key");
-const ai = new GoogleGenAI({ apiKey });
-const hasGoogleCreds = !!process.env.GOOGLE_APPLICATION_CREDENTIALS;
-const ttsClient = hasGoogleCreds ? new TextToSpeechClient() : null;
 
+const ai = new GoogleGenAI({ apiKey });
+const ttsClient = new TextToSpeechClient();
 const PAYSTACK_SECRET = process.env.PAYSTACK_SECRET_KEY;
 const PLAN_PRICES = { 'Basic': 2500, 'Premium': 4500, 'Max': 6500, 'Top-up': 500 };
 const PLAN_UNITS = { 'Basic': 50, 'Premium': 100, 'Max': 250, 'Top-up': 10 };
@@ -50,6 +53,8 @@ const getUserCredits = async (userId) => {
   try {
     const user = await db.get("SELECT credits, expiry_date FROM users WHERE uid = ?", [userId]);
     if (!user) return 10;
+    
+    // Check for expiration
     if (user.expiry_date) {
       const expiry = new Date(user.expiry_date);
       if (expiry < new Date()) {
@@ -57,60 +62,12 @@ const getUserCredits = async (userId) => {
         return 0;
       }
     }
+    
     return user.credits;
   } catch (e) { return 10; }
 };
 
 // --- 6. API ENDPOINTS ---
-
-app.post("/get-audio", async (req, res) => {
-  const { text, user_id } = req.body;
-  try {
-    // Credit Check
-    if (user_id && db) {
-      const credits = await getUserCredits(user_id);
-      if (credits < 1) return res.status(403).json({ error: "Not enough credits for audio" });
-      await db.run("UPDATE users SET credits = MAX(0, credits - 1) WHERE uid = ?", [user_id]);
-    }
-
-    if (ttsClient) {
-      try {
-        // PRIMARY: Authentic Nigerian Voice (Google Cloud TTS)
-        const [response] = await ttsClient.synthesizeSpeech({
-          input: { text },
-          voice: { languageCode: 'en-NG', name: 'en-NG-Wavenet-A' },
-          audioConfig: { audioEncoding: 'MP3' },
-        });
-        if (response.audioContent) {
-          return res.json({
-            audio: Buffer.from(response.audioContent).toString('base64'),
-            voice: 'en-NG-Wavenet-A',
-            mimeType: 'audio/mpeg'
-          });
-        }
-      } catch (ttsErr) {
-        console.warn("Cloud TTS failed, falling back to Gemini:", ttsErr.message);
-      }
-    }
-
-    // FALLBACK: Nigerian Persona (Gemini TTS)
-    const response = await ai.models.generateContent({
-      model: "gemini-3.1-flash-tts-preview",
-      contents: [{
-        parts: [{ text: `Say this exactly, but use a friendly, professional Nigerian teacher accent: ${text}` }]
-      }],
-      config: {
-        responseModalities: [Modality.AUDIO],
-        speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: 'Kore' } } }
-      },
-    });
-    res.json({
-      audio: response.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data,
-      voice: 'gemini-tts-fallback',
-      mimeType: 'audio/pcm'
-    });
-  } catch (err) { res.status(500).json({ error: "Audio failed" }); }
-});
 
 app.post("/api/auth/simple", async (req, res) => {
   const { uid, returnOnly } = req.body;
@@ -118,11 +75,155 @@ app.post("/api/auth/simple", async (req, res) => {
   try {
     const user = await db.get("SELECT * FROM users WHERE uid = ?", [uid]);
     if (!user) {
-      if (returnOnly) return res.status(404).json({ error: "Student code not found" });
+      if (returnOnly) return res.status(404).json({ error: "User not found" });
       await db.run("INSERT INTO users (uid, credits) VALUES (?, ?)", [uid, 10]);
     }
     res.json(await db.get("SELECT * FROM users WHERE uid = ?", [uid]));
   } catch (err) { res.status(500).json({ error: "Auth failed" }); }
+});
+
+app.post("/api/payments/initialize", async (req, res) => {
+  const { email, amount, userId, planName } = req.body;
+  const credits = PLAN_UNITS[planName] || 0;
+  
+  // Demo Mode check
+  if (PAYSTACK_SECRET === "sk_test_examPLE_demo_key_999") {
+    return res.json({ status: true, data: { authorization_url: `${process.env.APP_URL || ''}/payment-success?demo=true&userId=${userId}&credits=${credits}&amount=${amount}` } });
+  }
+  if (!PAYSTACK_SECRET) return res.status(500).json({ error: "Paystack not configured" });
+  try {
+    const response = await axios.post("https://api.paystack.co/transaction/initialize", {
+      email, 
+      amount: amount * 100, 
+      metadata: { userId, planName, credits },
+      callback_url: `${process.env.APP_URL}/payment-success`
+    }, { headers: { Authorization: `Bearer ${PAYSTACK_SECRET}` } });
+    res.json(response.data);
+  } catch (err) { res.status(500).json({ error: "Payment failed" }); }
+});
+
+app.get("/payment-success", async (req, res) => {
+  const { demo, userId, credits, amount } = req.query;
+  const creditAmount = Number(credits);
+  const payAmount = Number(amount);
+  
+  if (demo === "true" && userId && creditAmount && db) {
+    const expiry = new Date();
+    expiry.setDate(expiry.getDate() + 30);
+    const expiryStr = expiry.toISOString();
+    
+    await db.run("UPDATE users SET credits = credits + ?, expiry_date = ? WHERE uid = ?", [creditAmount, expiryStr, userId]);
+    
+    // Revenue Sharing (40% to school)
+    const user = await db.get("SELECT schoolId FROM users WHERE uid = ?", [userId]);
+    if (user && user.schoolId) {
+      const schoolComm = payAmount * 0.4;
+      await db.run("UPDATE schools SET total_earnings = total_earnings + ? WHERE school_id = ?", [schoolComm, user.schoolId]);
+    }
+    
+    // Log activity
+    await db.run("INSERT INTO activity (type, details, timestamp) VALUES (?, ?, ?)", [
+      'payment', 
+      JSON.stringify({ userId, amount: payAmount, credits: creditAmount }), 
+      new Date().toISOString()
+    ]);
+  }
+  const distPath = path.join(process.cwd(), "dist");
+  res.sendFile(path.join(distPath, "index.html"));
+});
+
+app.post("/ask-question", async (req, res) => {
+  const { user_id, questionText, isVoice } = req.body;
+  const cost = isVoice ? 2 : 1;
+  try {
+    const credits = await getUserCredits(user_id);
+    if (credits < cost) return res.status(403).json({ error: "Not enough credits" });
+    res.setHeader('Content-Type', 'text/event-stream');
+    const stream = await ai.models.generateContentStream({
+      model: "gemini-3.1-flash-lite-preview",
+      contents: [{ role: "user", parts: [{ text: questionText }] }],
+    });
+    for await (const chunk of stream) { if (chunk.text) res.write(`data: ${JSON.stringify({ text: chunk.text })}\n\n`); }
+    if (db) await db.run("UPDATE users SET credits = MAX(0, credits - ?) WHERE uid = ?", [cost, user_id]);
+    res.write(`data: [DONE]\n\n`);
+    res.end();
+  } catch (e) { res.end(); }
+});
+
+app.post("/register-school", async (req, res) => {
+  const { school_name, password } = req.body;
+  if (!school_name || !password || !db) return res.status(400).json({ error: "Missing data" });
+  try {
+    const school_slug = school_name.toLowerCase().replace(/[^a-z0-9]+/g, '-');
+    const school_id = `sch_${Math.random().toString(36).substring(2, 9)}`;
+    const referral_code = Math.random().toString(36).substring(2, 8).toUpperCase();
+    await db.run("INSERT INTO schools (school_id, school_name, school_slug, referral_code, password) VALUES (?, ?, ?, ?, ?)", [school_id, school_name, school_slug, referral_code, password]);
+    
+    // Log activity
+    await db.run("INSERT INTO activity (type, details, timestamp) VALUES (?, ?, ?)", [
+      'school_registration', 
+      JSON.stringify({ school_name, school_id }), 
+      new Date().toISOString()
+    ]);
+
+    res.json({ school_name, school_id, school_slug, referral_code });
+  } catch (err) { res.status(500).json({ error: "Registration failed" }); }
+});
+
+app.post("/get-audio", async (req, res) => {
+  const { text, user_id } = req.body;
+  try {
+    // Deduct 1 unit for audio explanation if user_id is provided
+    if (user_id && db) {
+      const credits = await getUserCredits(user_id);
+      if (credits < 1) return res.status(403).json({ error: "Not enough credits for audio" });
+      await db.run("UPDATE users SET credits = MAX(0, credits - 1) WHERE uid = ?", [user_id]);
+    }
+    
+    try {
+      // Primary: Try Google Cloud TTS for authentic Nigerian voice (en-NG)
+      const [response] = await ttsClient.synthesizeSpeech({
+        input: { text },
+        voice: { languageCode: 'en-NG', name: 'en-NG-Wavenet-A' },
+        audioConfig: { audioEncoding: 'MP3' },
+      });
+      if (response.audioContent) {
+        return res.json({ 
+          audio: Buffer.from(response.audioContent).toString('base64'),
+          voice: 'en-NG-Wavenet-A',
+          mimeType: 'audio/mpeg'
+        });
+      }
+    } catch (ttsErr) {
+      console.warn("Cloud TTS failed, falling back to Gemini:", ttsErr);
+    }
+
+    // Fallback: Use Gemini TTS with a Nigerian persona prompt
+    const response = await ai.models.generateContent({
+      model: "gemini-3.1-flash-tts-preview",
+      contents: [{ 
+        parts: [{ 
+          text: `Say this exactly, but use a friendly, professional Nigerian teacher accent and rhythm: ${text}` 
+        }] 
+      }],
+      config: { 
+        responseModalities: [Modality.AUDIO], 
+        speechConfig: { 
+          voiceConfig: { 
+            prebuiltVoiceConfig: { voiceName: 'Kore' } 
+          } 
+        } 
+      },
+    });
+    res.json({ 
+      audio: response.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data,
+      voice: 'gemini-tts-fallback',
+      mimeType: 'audio/pcm' // Frontend knows to wrap this in WAV
+    });
+  } catch (err) { 
+    console.error("Audio generation failed:", err);
+    res.status(500).json({ error: "Audio failed" }); 
+  }
 });
 
 app.post("/api/whatsapp/message", async (req, res) => {
@@ -136,20 +237,16 @@ app.post("/api/whatsapp/message", async (req, res) => {
         return res.json({ message: "Please specify a school name or referral code." });
       }
 
-      // Try to find school by school_id, referral code, name (trim+case-insensitive), or slug
-      let school = await db.get("SELECT * FROM schools WHERE school_id = ?", [searchTerm]);
-
+      // Try to find school by referral code, name, or slug
+      let school = await db.get("SELECT * FROM schools WHERE referral_code = ?", [searchTerm.toUpperCase()]);
+      
       if (!school) {
-        school = await db.get("SELECT * FROM schools WHERE referral_code = ?", [searchTerm.toUpperCase()]);
+        school = await db.get("SELECT * FROM schools WHERE school_name = ?", [searchTerm]);
       }
 
       if (!school) {
-        school = await db.get("SELECT * FROM schools WHERE LOWER(TRIM(school_name)) = LOWER(TRIM(?))", [searchTerm]);
-      }
-
-      if (!school) {
-        const slug = searchTerm.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
-        school = await db.get("SELECT * FROM schools WHERE TRIM(school_slug, '-') = ?", [slug]);
+        const slug = searchTerm.toLowerCase().replace(/[^a-z0-9]+/g, '-');
+        school = await db.get("SELECT * FROM schools WHERE school_slug = ?", [slug]);
       }
 
       if (school) {
@@ -159,85 +256,6 @@ app.post("/api/whatsapp/message", async (req, res) => {
     }
     res.json({ message: "Command not recognized. Please type JOIN followed by your school code or name." });
   } catch (err) { res.status(500).json({ error: "WhatsApp failed" }); }
-});
-
-app.post("/api/payments/initialize", async (req, res) => {
-  const { email, amount, userId, planName } = req.body;
-  const credits = PLAN_UNITS[planName] || 0;
-
-  if (PAYSTACK_SECRET === "sk_test_examPLE_demo_key_999") {
-    return res.json({ status: true, data: { authorization_url: `${process.env.APP_URL || ''}/payment-success?demo=true&userId=${userId}&credits=${credits}&amount=${amount}` } });
-  }
-
-  try {
-    const response = await axios.post("https://api.paystack.co/transaction/initialize", {
-      email, amount: amount * 100, metadata: { userId, planName, credits },
-      callback_url: `${process.env.APP_URL}/payment-success`
-    }, { headers: { Authorization: `Bearer ${PAYSTACK_SECRET}` } });
-    res.json(response.data);
-  } catch (err) { res.status(500).json({ error: "Payment failed" }); }
-});
-
-app.get("/payment-success", async (req, res) => {
-  const { demo, userId, credits, amount } = req.query;
-  const creditAmount = Number(credits);
-  const payAmount = Number(amount);
-
-  if (demo === "true" && userId && creditAmount && db) {
-    const expiry = new Date();
-    expiry.setDate(expiry.getDate() + 30);
-    await db.run("UPDATE users SET credits = credits + ?, expiry_date = ? WHERE uid = ?", [creditAmount, expiry.toISOString(), userId]);
-
-    // REVENUE SHARE (40%)
-    const user = await db.get("SELECT schoolId FROM users WHERE uid = ?", [userId]);
-    if (user?.schoolId) {
-      const schoolComm = payAmount * 0.4;
-      await db.run("UPDATE schools SET total_earnings = total_earnings + ? WHERE school_id = ?", [schoolComm, user.schoolId]);
-    }
-  }
-  res.sendFile(path.join(path.join(process.cwd(), "dist"), "index.html"));
-});
-
-app.post("/ask-question", async (req, res) => {
-  const { user_id, questionText, isVoice } = req.body;
-  const cost = isVoice ? 2 : 1;
-  try {
-    const credits = await getUserCredits(user_id);
-    if (credits < cost) return res.status(403).json({ error: "Not enough credits" });
-    res.setHeader('Content-Type', 'text/event-stream');
-    const stream = await ai.models.generateContentStream({
-      model: "gemini-3.1-flash-lite-preview",
-      config: {
-        systemInstruction: "You are a friendly Nigerian tutor helping students with exam preparation. Write all responses in plain English — never use LaTeX notation like $...$ or \\times. For maths, write expressions in plain text e.g. '1 × 2' or '2²'. Keep explanations clear and encouraging."
-      },
-      contents: [{ role: "user", parts: [{ text: questionText }] }],
-    });
-    for await (const chunk of stream) { if (chunk.text) res.write(`data: ${JSON.stringify({ text: chunk.text })}\n\n`); }
-    if (db) await db.run("UPDATE users SET credits = MAX(0, credits - ?) WHERE uid = ?", [cost, user_id]);
-    res.write(`data: [DONE]\n\n`);
-    res.end();
-  } catch (e) { res.end(); }
-});
-
-app.post("/register-school", async (req, res) => {
-  const { school_name: raw_name, password } = req.body;
-  if (!raw_name || !password || !db) return res.status(400).json({ error: "Missing data" });
-  try {
-    const school_name = raw_name.trim();
-    if (!school_name) return res.status(400).json({ error: "School name cannot be blank" });
-    const school_slug = school_name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
-    const school_id = `sch_${Math.random().toString(36).substring(2, 9)}`;
-    const referral_code = Math.random().toString(36).substring(2, 8).toUpperCase();
-    await db.run("INSERT INTO schools (school_id, school_name, school_slug, referral_code, password) VALUES (?, ?, ?, ?, ?)", [school_id, school_name, school_slug, referral_code, password]);
-
-    await db.run("INSERT INTO activity (type, details, timestamp) VALUES (?, ?, ?)", [
-      'school_registration',
-      JSON.stringify({ school_name, school_id }),
-      new Date().toISOString()
-    ]);
-
-    res.json({ school_name, school_id, school_slug, referral_code });
-  } catch (err) { res.status(500).json({ error: "Registration failed" }); }
 });
 
 app.get("/api/schools/by-slug/:slug", async (req, res) => {
@@ -255,8 +273,11 @@ app.post("/school-login", async (req, res) => {
   if (!db) return res.status(500).json({ error: "DB missing" });
   try {
     const school = await db.get("SELECT * FROM schools WHERE school_slug = ?", [school_slug]);
-    if (school && school.password === password) res.json({ success: true });
-    else res.status(401).json({ error: "Invalid password" });
+    if (school && school.password === password) {
+      res.json({ success: true });
+    } else {
+      res.status(401).json({ error: "Invalid password" });
+    }
   } catch (err) { res.status(500).json({ error: "Login failed" }); }
 });
 
@@ -266,8 +287,12 @@ app.post("/school-dashboard", async (req, res) => {
   try {
     const school = await db.get("SELECT * FROM schools WHERE school_slug = ?", [school_slug]);
     if (!school) return res.status(404).json({ error: "School not found" });
+    
     const withdrawals = await db.all("SELECT * FROM withdrawals WHERE school_id = ?", [school.school_id]);
+    
+    // Approximate active users as users who joined this school
     const usersRes = await db.get("SELECT COUNT(*) as count FROM users WHERE schoolId = ?", [school.school_id]);
+
     res.json({
       ...school,
       total_students: school.total_students || 0,
@@ -285,16 +310,22 @@ app.post("/request-withdrawal", async (req, res) => {
     if (!school || school.total_earnings < amount) {
       return res.status(400).json({ error: "Insufficient balance" });
     }
+    
     const withdrawal_id = `wd_${Math.random().toString(36).substring(2, 9)}`;
     await db.run("INSERT INTO withdrawals (id, school_id, amount, status, timestamp) VALUES (?, ?, ?, ?, ?)", [
       withdrawal_id, school_id, amount, 'pending', new Date().toISOString()
     ]);
+    
+    // Deduct from school balance
     await db.run("UPDATE schools SET total_earnings = total_earnings - ? WHERE school_id = ?", [amount, school_id]);
+    
+    // Log activity
     await db.run("INSERT INTO activity (type, details, timestamp) VALUES (?, ?, ?)", [
-      'withdrawal',
-      JSON.stringify({ school_id, amount, withdrawal_id }),
+      'withdrawal', 
+      JSON.stringify({ school_id, amount, withdrawal_id }), 
       new Date().toISOString()
     ]);
+
     res.json({ message: "Withdrawal request submitted successfully" });
   } catch (err) { res.status(500).json({ error: "Withdrawal failed" }); }
 });
@@ -304,8 +335,11 @@ const ADMIN_SECRET = "exam-admin-2026";
 
 const authenticateAdmin = (req, res, next) => {
   const authHeader = req.headers.authorization;
-  if (authHeader === `Bearer ${ADMIN_SECRET}`) next();
-  else res.status(401).json({ error: "Unauthorized" });
+  if (authHeader === `Bearer ${ADMIN_SECRET}`) {
+    next();
+  } else {
+    res.status(401).json({ error: "Unauthorized" });
+  }
 };
 
 app.get("/admin/stats", authenticateAdmin, async (req, res) => {
@@ -314,9 +348,17 @@ app.get("/admin/stats", authenticateAdmin, async (req, res) => {
     const userCount = await db.get("SELECT COUNT(*) as count FROM users");
     const schoolCount = await db.get("SELECT COUNT(*) as count FROM schools");
     const stats = await db.all("SELECT * FROM stats");
+    
+    // Calculate total revenue and withdrawals from stats or entities
     const totalRevenue = stats.find(s => s.key === 'total_revenue')?.value || 0;
     const totalWithdrawals = stats.find(s => s.key === 'total_withdrawals')?.value || 0;
-    res.json({ totalUsers: userCount.count, totalSchools: schoolCount.count, totalRevenue, totalWithdrawals });
+
+    res.json({
+      totalUsers: userCount.count,
+      totalSchools: schoolCount.count,
+      totalRevenue,
+      totalWithdrawals
+    });
   } catch (err) { res.status(500).json({ error: "Stats failed" }); }
 });
 
@@ -325,10 +367,15 @@ app.get("/admin/users", authenticateAdmin, async (req, res) => {
   try {
     const users = await db.all("SELECT * FROM users");
     const schools = await db.all("SELECT * FROM schools");
+    
     const enrichedUsers = users.map(u => {
       const school = schools.find(s => s.school_id === u.schoolId);
-      return { ...u, school_name: school ? school.school_name : "Private Student" };
+      return {
+        ...u,
+        school_name: school ? school.school_name : "Private Student"
+      };
     });
+    
     res.json(enrichedUsers);
   } catch (err) { res.status(500).json({ error: "Users failed" }); }
 });
@@ -346,10 +393,15 @@ app.get("/admin/withdrawals", authenticateAdmin, async (req, res) => {
   try {
     const withdrawals = await db.all("SELECT * FROM withdrawals");
     const schools = await db.all("SELECT * FROM schools");
+    
     const enrichedWithdrawals = withdrawals.map(w => {
       const school = schools.find(s => s.school_id === w.school_id);
-      return { ...w, school_name: school ? school.school_name : "Unknown School" };
+      return {
+        ...w,
+        school_name: school ? school.school_name : "Unknown School"
+      };
     });
+    
     res.json(enrichedWithdrawals);
   } catch (err) { res.status(500).json({ error: "Withdrawals failed" }); }
 });
@@ -373,10 +425,10 @@ app.post("/admin/withdrawals/mark-paid", authenticateAdmin, async (req, res) => 
 
 // --- 7. API STATUS ---
 app.get("/", (req, res) => {
-  res.json({
-    message: "ExamPLE API is online",
+  res.json({ 
+    message: "ExamPLE API is online", 
     status: "ready",
-    endpoints: ["/ask-question", "/get-audio", "/register-school", "/school-login"]
+    endpoints: ["/ask-question", "/get-audio", "/register-school", "/school-login"] 
   });
 });
 
@@ -384,7 +436,7 @@ app.get("/", (req, res) => {
 process.on("uncaughtException", (err) => { console.error("Uncaught Exception:", err); });
 process.on("unhandledRejection", (err) => { console.error("Unhandled Rejection:", err); });
 
-// --- 9. SERVER START ---
+// --- 9. SERVER START (AT THE VERY END) ---
 app.listen(PORT, "0.0.0.0", () => {
   console.log(`🚀 ExamPLE running on port ${PORT}`);
 });
