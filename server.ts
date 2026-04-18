@@ -429,6 +429,19 @@ app.get("/admin/schools", requireAdmin, (req, res) => {
   } catch (err) { res.status(500).json({ error: "Schools failed" }); }
 });
 
+app.get("/admin/users", requireAdmin, (req, res) => {
+  if (!db) return res.status(500).json({ error: "DB missing" });
+  try {
+    const users = db.prepare(`
+      SELECT u.uid, u.credits, u.expiry_date, u.schoolId, s.school_name
+      FROM users u
+      LEFT JOIN schools s ON u.schoolId = s.school_id
+      ORDER BY u.rowid DESC
+    `).all();
+    res.json(users);
+  } catch (err) { res.status(500).json({ error: "Users failed" }); }
+});
+
 app.get("/admin/withdrawals", requireAdmin, (req, res) => {
   if (!db) return res.status(500).json({ error: "DB missing" });
   try {

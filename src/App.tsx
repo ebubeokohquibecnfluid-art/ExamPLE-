@@ -104,6 +104,8 @@ function AdminDashboard({ showToast }: { showToast: (msg: string, type?: 'succes
   const [schools, setSchools] = useState<any[]>([]);
   const [withdrawals, setWithdrawals] = useState<any[]>([]);
   const [activity, setActivity] = useState<any[]>([]);
+  const [adminUsers, setAdminUsers] = useState<any[]>([]);
+  const [activePanel, setActivePanel] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [password, setPassword] = useState('');
@@ -114,20 +116,19 @@ function AdminDashboard({ showToast }: { showToast: (msg: string, type?: 'succes
   const fetchData = async () => {
     try {
       const headers = { 'Authorization': `Bearer ${ADMIN_SECRET}` };
-      const [statsRes, schoolsRes, withdrawalsRes, activityRes] = await Promise.all([
+      const [statsRes, schoolsRes, withdrawalsRes, activityRes, usersRes] = await Promise.all([
         fetch(`${API_BASE_URL}/admin/stats`, { headers }),
         fetch(`${API_BASE_URL}/admin/schools`, { headers }),
         fetch(`${API_BASE_URL}/admin/withdrawals`, { headers }),
-        fetch(`${API_BASE_URL}/admin/activity`, { headers })
+        fetch(`${API_BASE_URL}/admin/activity`, { headers }),
+        fetch(`${API_BASE_URL}/admin/users`, { headers }),
       ]);
-      if (statsRes.ok && schoolsRes.ok && withdrawalsRes.ok && activityRes.ok) {
-        setStats(await statsRes.json());
-        setSchools(await schoolsRes.json());
-        setWithdrawals(await withdrawalsRes.json());
-        setActivity(await activityRes.json());
-      } else {
-        setError("Failed to fetch admin data");
-      }
+      if (statsRes.ok) setStats(await statsRes.json());
+      if (schoolsRes.ok) setSchools(await schoolsRes.json());
+      if (withdrawalsRes.ok) setWithdrawals(await withdrawalsRes.json());
+      if (activityRes.ok) setActivity(await activityRes.json());
+      if (usersRes.ok) setAdminUsers(await usersRes.json());
+      if (!statsRes.ok && !schoolsRes.ok) setError("Failed to fetch admin data");
     } catch (err) {
       setError("Connection error");
     } finally {
@@ -244,20 +245,111 @@ function AdminDashboard({ showToast }: { showToast: (msg: string, type?: 'succes
         {/* Stats Grid */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
           {[
-            { label: 'Users', value: stats?.totalUsers, icon: Users, color: 'text-blue-600', bg: 'bg-blue-50' },
-            { label: 'Schools', value: stats?.totalSchools, icon: School, color: 'text-purple-600', bg: 'bg-purple-50' },
-            { label: 'Revenue', value: `₦${stats?.totalRevenue?.toLocaleString()}`, icon: DollarSign, color: 'text-green-600', bg: 'bg-green-50' },
-            { label: 'Payouts', value: `₦${stats?.totalWithdrawals?.toLocaleString()}`, icon: Wallet, color: 'text-orange-600', bg: 'bg-orange-50' },
-          ].map((s, i) => (
-            <div key={i} className="bg-white p-5 rounded-3xl border border-slate-200 shadow-sm">
+            { key: 'users', label: 'Users', value: stats?.totalUsers, icon: Users, color: 'text-blue-600', bg: 'bg-blue-50' },
+            { key: 'schools', label: 'Schools', value: stats?.totalSchools, icon: School, color: 'text-purple-600', bg: 'bg-purple-50' },
+            { key: 'revenue', label: 'Revenue', value: `₦${(stats?.totalRevenue || 0).toLocaleString()}`, icon: DollarSign, color: 'text-green-600', bg: 'bg-green-50' },
+            { key: 'payouts', label: 'Payouts', value: `₦${(stats?.totalWithdrawals || 0).toLocaleString()}`, icon: Wallet, color: 'text-orange-600', bg: 'bg-orange-50' },
+          ].map((s) => (
+            <button
+              key={s.key}
+              onClick={() => setActivePanel(activePanel === s.key ? null : s.key)}
+              className={cn("bg-white p-5 rounded-3xl border shadow-sm text-left w-full transition-all active:scale-95",
+                activePanel === s.key ? 'border-slate-400 ring-2 ring-slate-200' : 'border-slate-200 hover:border-slate-300'
+              )}
+            >
               <div className={cn("w-10 h-10 rounded-xl flex items-center justify-center mb-3", s.bg)}>
                 <s.icon className={cn("w-5 h-5", s.color)} />
               </div>
               <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">{s.label}</p>
               <p className="text-xl font-black text-slate-900">{s.value}</p>
-            </div>
+              <p className="text-[9px] text-slate-400 mt-1">Tap to {activePanel === s.key ? 'close' : 'view'}</p>
+            </button>
           ))}
         </div>
+
+        {/* Detail Panels */}
+        {activePanel === 'users' && (
+          <div className="bg-white rounded-[32px] border border-slate-200 shadow-sm overflow-hidden">
+            <div className="px-6 py-4 border-b border-slate-100 flex items-center gap-2">
+              <Users className="w-4 h-4 text-blue-600" />
+              <h3 className="font-black text-slate-900 text-sm">All Users ({adminUsers.length})</h3>
+            </div>
+            <div className="divide-y divide-slate-50 max-h-80 overflow-y-auto">
+              {adminUsers.length === 0 && <p className="px-6 py-8 text-center text-sm text-slate-400 italic">No users yet</p>}
+              {adminUsers.map((u: any, i: number) => (
+                <div key={i} className="px-6 py-3 flex items-center justify-between">
+                  <div>
+                    <p className="text-xs font-bold text-slate-800 font-mono">{u.uid.substring(0, 20)}...</p>
+                    <p className="text-[10px] text-slate-400">{u.school_name ? `School: ${u.school_name}` : 'No school'} {u.expiry_date ? `· Expires ${new Date(u.expiry_date).toLocaleDateString()}` : ''}</p>
+                  </div>
+                  <span className="text-sm font-black text-nigeria-green">{u.credits} units</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {activePanel === 'schools' && (
+          <div className="bg-white rounded-[32px] border border-slate-200 shadow-sm overflow-hidden">
+            <div className="px-6 py-4 border-b border-slate-100 flex items-center gap-2">
+              <School className="w-4 h-4 text-purple-600" />
+              <h3 className="font-black text-slate-900 text-sm">All Schools ({schools.length})</h3>
+            </div>
+            <div className="divide-y divide-slate-50 max-h-80 overflow-y-auto">
+              {schools.length === 0 && <p className="px-6 py-8 text-center text-sm text-slate-400 italic">No schools yet</p>}
+              {schools.map((s: any) => (
+                <div key={s.school_id} className="px-6 py-3 flex items-center justify-between">
+                  <div>
+                    <p className="text-sm font-bold text-slate-800">{s.school_name}</p>
+                    <p className="text-[10px] text-slate-400">Code: {s.referral_code} · {s.total_students} students</p>
+                  </div>
+                  <span className="text-sm font-black text-nigeria-green">₦{(s.total_earnings || 0).toLocaleString()}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {activePanel === 'revenue' && (
+          <div className="bg-white rounded-[32px] border border-slate-200 shadow-sm overflow-hidden">
+            <div className="px-6 py-4 border-b border-slate-100 flex items-center gap-2">
+              <DollarSign className="w-4 h-4 text-green-600" />
+              <h3 className="font-black text-slate-900 text-sm">Revenue by School</h3>
+            </div>
+            <div className="divide-y divide-slate-50 max-h-80 overflow-y-auto">
+              {schools.filter((s: any) => s.total_earnings > 0).length === 0 && <p className="px-6 py-8 text-center text-sm text-slate-400 italic">No revenue yet</p>}
+              {schools.filter((s: any) => s.total_earnings > 0).sort((a: any, b: any) => b.total_earnings - a.total_earnings).map((s: any) => (
+                <div key={s.school_id} className="px-6 py-3 flex items-center justify-between">
+                  <p className="text-sm font-bold text-slate-800">{s.school_name}</p>
+                  <span className="text-sm font-black text-green-600">₦{(s.total_earnings || 0).toLocaleString()}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {activePanel === 'payouts' && (
+          <div className="bg-white rounded-[32px] border border-slate-200 shadow-sm overflow-hidden">
+            <div className="px-6 py-4 border-b border-slate-100 flex items-center gap-2">
+              <Wallet className="w-4 h-4 text-orange-600" />
+              <h3 className="font-black text-slate-900 text-sm">All Payouts ({withdrawals.length})</h3>
+            </div>
+            <div className="divide-y divide-slate-50 max-h-80 overflow-y-auto">
+              {withdrawals.length === 0 && <p className="px-6 py-8 text-center text-sm text-slate-400 italic">No payouts yet</p>}
+              {withdrawals.map((w: any) => (
+                <div key={w.id} className="px-6 py-3 flex items-center justify-between">
+                  <div>
+                    <p className="text-sm font-bold text-slate-800">{w.school_name}</p>
+                    <p className="text-[10px] text-slate-400">{new Date(w.timestamp).toLocaleDateString()}</p>
+                  </div>
+                  <span className={cn("text-xs font-black px-2 py-1 rounded-full", w.status === 'paid' ? 'bg-green-100 text-green-700' : 'bg-orange-100 text-orange-700')}>
+                    ₦{(w.amount || 0).toLocaleString()} · {w.status}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
 
         {/* Withdrawals Section */}
         <section className="space-y-4">
