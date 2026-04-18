@@ -104,12 +104,12 @@ function AdminDashboard({ showToast }: { showToast: (msg: string, type?: 'succes
   const [schools, setSchools] = useState<any[]>([]);
   const [withdrawals, setWithdrawals] = useState<any[]>([]);
   const [activity, setActivity] = useState<any[]>([]);
-  const [adminUsers, setAdminUsers] = useState<any[]>([]);
-  const [activePanel, setActivePanel] = useState<string | null>(null);
+  const [users, setUsers] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
+  const [activePanel, setActivePanel] = useState<string | null>(null);
 
   const ADMIN_SECRET = "exam-admin-2026";
 
@@ -121,14 +121,18 @@ function AdminDashboard({ showToast }: { showToast: (msg: string, type?: 'succes
         fetch(`${API_BASE_URL}/admin/schools`, { headers }),
         fetch(`${API_BASE_URL}/admin/withdrawals`, { headers }),
         fetch(`${API_BASE_URL}/admin/activity`, { headers }),
-        fetch(`${API_BASE_URL}/admin/users`, { headers }),
+        fetch(`${API_BASE_URL}/admin/users`, { headers })
       ]);
-      if (statsRes.ok) setStats(await statsRes.json());
-      if (schoolsRes.ok) setSchools(await schoolsRes.json());
-      if (withdrawalsRes.ok) setWithdrawals(await withdrawalsRes.json());
-      if (activityRes.ok) setActivity(await activityRes.json());
-      if (usersRes.ok) setAdminUsers(await usersRes.json());
-      if (!statsRes.ok && !schoolsRes.ok) setError("Failed to fetch admin data");
+
+      if (statsRes.ok && schoolsRes.ok && withdrawalsRes.ok && activityRes.ok && usersRes.ok) {
+        setStats(await statsRes.json());
+        setSchools(await schoolsRes.json());
+        setWithdrawals(await withdrawalsRes.json());
+        setActivity(await activityRes.json());
+        setUsers(await usersRes.json());
+      } else {
+        setError("Failed to fetch admin data");
+      }
     } catch (err) {
       setError("Connection error");
     } finally {
@@ -162,7 +166,7 @@ function AdminDashboard({ showToast }: { showToast: (msg: string, type?: 'succes
     try {
       const res = await fetch(`${API_BASE_URL}/admin/withdrawals/mark-paid`, {
         method: 'POST',
-        headers: {
+        headers: { 
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${ADMIN_SECRET}`
         },
@@ -245,16 +249,17 @@ function AdminDashboard({ showToast }: { showToast: (msg: string, type?: 'succes
         {/* Stats Grid */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
           {[
-            { key: 'users', label: 'Users', value: stats?.totalUsers, icon: Users, color: 'text-blue-600', bg: 'bg-blue-50' },
-            { key: 'schools', label: 'Schools', value: stats?.totalSchools, icon: School, color: 'text-purple-600', bg: 'bg-purple-50' },
-            { key: 'revenue', label: 'Revenue', value: `₦${(stats?.totalRevenue || 0).toLocaleString()}`, icon: DollarSign, color: 'text-green-600', bg: 'bg-green-50' },
-            { key: 'payouts', label: 'Payouts', value: `₦${(stats?.totalWithdrawals || 0).toLocaleString()}`, icon: Wallet, color: 'text-orange-600', bg: 'bg-orange-50' },
-          ].map((s) => (
-            <button
-              key={s.key}
-              onClick={() => setActivePanel(activePanel === s.key ? null : s.key)}
-              className={cn("bg-white p-5 rounded-3xl border shadow-sm text-left w-full transition-all active:scale-95",
-                activePanel === s.key ? 'border-slate-400 ring-2 ring-slate-200' : 'border-slate-200 hover:border-slate-300'
+            { id: 'users', label: 'Users', value: stats?.totalUsers, icon: Users, color: 'text-blue-600', bg: 'bg-blue-50' },
+            { id: 'schools', label: 'Schools', value: stats?.totalSchools, icon: School, color: 'text-purple-600', bg: 'bg-purple-50' },
+            { id: 'revenue', label: 'Revenue', value: `₦${stats?.totalRevenue?.toLocaleString()}`, icon: DollarSign, color: 'text-green-600', bg: 'bg-green-50' },
+            { id: 'payouts', label: 'Payouts', value: `₦${stats?.totalWithdrawals?.toLocaleString()}`, icon: Wallet, color: 'text-orange-600', bg: 'bg-orange-50' },
+          ].map((s, i) => (
+            <button 
+              key={i} 
+              onClick={() => setActivePanel(activePanel === s.id ? null : s.id)}
+              className={cn(
+                "bg-white p-5 rounded-3xl border transition-all text-left group relative hover:scale-105 active:scale-95",
+                activePanel === s.id ? "border-slate-900 ring-2 ring-slate-900/10 shadow-lg" : "border-slate-200 shadow-sm"
               )}
             >
               <div className={cn("w-10 h-10 rounded-xl flex items-center justify-center mb-3", s.bg)}>
@@ -262,198 +267,230 @@ function AdminDashboard({ showToast }: { showToast: (msg: string, type?: 'succes
               </div>
               <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">{s.label}</p>
               <p className="text-xl font-black text-slate-900">{s.value}</p>
-              <p className="text-[9px] text-slate-400 mt-1">Tap to {activePanel === s.key ? 'close' : 'view'}</p>
+              <div className="absolute top-4 right-4 text-[8px] font-bold text-slate-300 uppercase opacity-0 group-hover:opacity-100 transition-opacity">
+                {activePanel === s.id ? "Tap to close" : "Tap to view"}
+              </div>
             </button>
           ))}
         </div>
 
-        {/* Detail Panels */}
-        {activePanel === 'users' && (
-          <div className="bg-white rounded-[32px] border border-slate-200 shadow-sm overflow-hidden">
-            <div className="px-6 py-4 border-b border-slate-100 flex items-center gap-2">
-              <Users className="w-4 h-4 text-blue-600" />
-              <h3 className="font-black text-slate-900 text-sm">All Users ({adminUsers.length})</h3>
-            </div>
-            <div className="divide-y divide-slate-50 max-h-80 overflow-y-auto">
-              {adminUsers.length === 0 && <p className="px-6 py-8 text-center text-sm text-slate-400 italic">No users yet</p>}
-              {adminUsers.map((u: any, i: number) => (
-                <div key={i} className="px-6 py-3 flex items-center justify-between">
-                  <div>
-                    <p className="text-xs font-bold text-slate-800 font-mono">{u.uid.substring(0, 20)}...</p>
-                    <p className="text-[10px] text-slate-400">{u.school_name ? `School: ${u.school_name}` : 'No school'} {u.expiry_date ? `· Expires ${new Date(u.expiry_date).toLocaleDateString()}` : ''}</p>
-                  </div>
-                  <span className="text-sm font-black text-nigeria-green">{u.credits} units</span>
+        {/* Detailed Panels */}
+        <AnimatePresence mode="wait">
+          {activePanel === 'users' && (
+            <motion.section 
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: 10 }}
+              className="space-y-4"
+            >
+              <h2 className="text-lg font-black text-slate-900 flex items-center gap-2">
+                <Users className="w-5 h-5 text-blue-500" /> User Directory
+              </h2>
+              <div className="bg-white rounded-[32px] border border-slate-200 shadow-sm overflow-hidden">
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left border-collapse">
+                    <thead>
+                      <tr className="bg-slate-50 border-b border-slate-100">
+                        <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Student</th>
+                        <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">School</th>
+                        <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Credits</th>
+                        <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Expiry</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-50">
+                      {users.map((u) => (
+                        <tr key={u.uid} className="hover:bg-slate-50 transition-colors">
+                          <td className="px-6 py-4">
+                            <p className="text-sm font-bold text-slate-800">{u.displayName || u.uid.slice(0, 8)}</p>
+                            <p className="text-[10px] text-slate-400">{u.uid}</p>
+                          </td>
+                          <td className="px-6 py-4 text-xs text-slate-600 font-medium">{u.school_name}</td>
+                          <td className="px-6 py-4 text-sm font-black text-nigeria-green">{u.credits}</td>
+                          <td className="px-6 py-4 text-[10px] text-slate-500">
+                            {u.expiry_date ? new Date(u.expiry_date).toLocaleDateString() : "Never"}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
                 </div>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {activePanel === 'schools' && (
-          <div className="bg-white rounded-[32px] border border-slate-200 shadow-sm overflow-hidden">
-            <div className="px-6 py-4 border-b border-slate-100 flex items-center gap-2">
-              <School className="w-4 h-4 text-purple-600" />
-              <h3 className="font-black text-slate-900 text-sm">All Schools ({schools.length})</h3>
-            </div>
-            <div className="divide-y divide-slate-50 max-h-80 overflow-y-auto">
-              {schools.length === 0 && <p className="px-6 py-8 text-center text-sm text-slate-400 italic">No schools yet</p>}
-              {schools.map((s: any) => (
-                <div key={s.school_id} className="px-6 py-3 flex items-center justify-between">
-                  <div>
-                    <p className="text-sm font-bold text-slate-800">{s.school_name}</p>
-                    <p className="text-[10px] text-slate-400">Code: {s.referral_code} · {s.total_students} students</p>
-                  </div>
-                  <span className="text-sm font-black text-nigeria-green">₦{(s.total_earnings || 0).toLocaleString()}</span>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {activePanel === 'revenue' && (
-          <div className="bg-white rounded-[32px] border border-slate-200 shadow-sm overflow-hidden">
-            <div className="px-6 py-4 border-b border-slate-100 flex items-center gap-2">
-              <DollarSign className="w-4 h-4 text-green-600" />
-              <h3 className="font-black text-slate-900 text-sm">Revenue by School</h3>
-            </div>
-            <div className="divide-y divide-slate-50 max-h-80 overflow-y-auto">
-              {schools.filter((s: any) => s.total_earnings > 0).length === 0 && <p className="px-6 py-8 text-center text-sm text-slate-400 italic">No revenue yet</p>}
-              {schools.filter((s: any) => s.total_earnings > 0).sort((a: any, b: any) => b.total_earnings - a.total_earnings).map((s: any) => (
-                <div key={s.school_id} className="px-6 py-3 flex items-center justify-between">
-                  <p className="text-sm font-bold text-slate-800">{s.school_name}</p>
-                  <span className="text-sm font-black text-green-600">₦{(s.total_earnings || 0).toLocaleString()}</span>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {activePanel === 'payouts' && (
-          <div className="bg-white rounded-[32px] border border-slate-200 shadow-sm overflow-hidden">
-            <div className="px-6 py-4 border-b border-slate-100 flex items-center gap-2">
-              <Wallet className="w-4 h-4 text-orange-600" />
-              <h3 className="font-black text-slate-900 text-sm">All Payouts ({withdrawals.length})</h3>
-            </div>
-            <div className="divide-y divide-slate-50 max-h-80 overflow-y-auto">
-              {withdrawals.length === 0 && <p className="px-6 py-8 text-center text-sm text-slate-400 italic">No payouts yet</p>}
-              {withdrawals.map((w: any) => (
-                <div key={w.id} className="px-6 py-3 flex items-center justify-between">
-                  <div>
-                    <p className="text-sm font-bold text-slate-800">{w.school_name}</p>
-                    <p className="text-[10px] text-slate-400">{new Date(w.timestamp).toLocaleDateString()}</p>
-                  </div>
-                  <span className={cn("text-xs font-black px-2 py-1 rounded-full", w.status === 'paid' ? 'bg-green-100 text-green-700' : 'bg-orange-100 text-orange-700')}>
-                    ₦{(w.amount || 0).toLocaleString()} · {w.status}
-                  </span>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {/* Withdrawals Section */}
-        <section className="space-y-4">
-          <div className="flex items-center justify-between">
-            <h2 className="text-lg font-black text-slate-900 flex items-center gap-2">
-              <Wallet className="w-5 h-5 text-orange-500" /> Pending Payouts
-            </h2>
-          </div>
-          <div className="bg-white rounded-[32px] border border-slate-200 shadow-sm overflow-hidden">
-            <div className="overflow-x-auto">
-              <table className="w-full text-left border-collapse">
-                <thead>
-                  <tr className="bg-slate-50 border-b border-slate-100">
-                    <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">School</th>
-                    <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Amount</th>
-                    <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Status</th>
-                    <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Action</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-50">
-                  {withdrawals.filter(w => w.status === 'pending').map((w) => (
-                    <tr key={w.id} className="hover:bg-slate-50 transition-colors">
-                      <td className="px-6 py-4">
-                        <p className="text-sm font-bold text-slate-800">{w.school_name}</p>
-                        <p className="text-[10px] text-slate-400">{new Date(w.timestamp).toLocaleDateString()}</p>
-                      </td>
-                      <td className="px-6 py-4 text-sm font-black text-slate-900">₦{w.amount.toLocaleString()}</td>
-                      <td className="px-6 py-4">
-                        <span className="px-2 py-1 bg-orange-100 text-orange-700 rounded-full text-[10px] font-black uppercase">Pending</span>
-                      </td>
-                      <td className="px-6 py-4">
-                        <button 
-                          onClick={() => markAsPaid(w.id)}
-                          className="bg-nigeria-green text-white px-4 py-2 rounded-xl text-xs font-bold hover:bg-green-700 transition-all"
-                        >
-                          Mark Paid
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
-                  {withdrawals.filter(w => w.status === 'pending').length === 0 && (
-                    <tr>
-                      <td colSpan={4} className="px-6 py-10 text-center text-sm text-slate-400 italic">No pending withdrawals</td>
-                    </tr>
-                  )}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        </section>
-
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-          {/* Schools List */}
-          <section className="space-y-4">
-            <h2 className="text-lg font-black text-slate-900 flex items-center gap-2">
-              <School className="w-5 h-5 text-purple-500" /> Schools
-            </h2>
-            <div className="bg-white rounded-[32px] border border-slate-200 shadow-sm overflow-hidden">
-              <div className="p-4 space-y-4">
-                {schools.map((s) => (
-                  <div key={s.school_id} className="flex items-center justify-between p-4 bg-slate-50 rounded-2xl">
-                    <div>
-                      <p className="text-sm font-bold text-slate-800">{s.school_name}</p>
-                      <p className="text-[10px] text-slate-400">{s.total_students} Students</p>
-                    </div>
-                    <div className="text-right">
-                      <p className="text-sm font-black text-nigeria-green">₦{s.total_earnings.toLocaleString()}</p>
-                    </div>
-                  </div>
-                ))}
               </div>
-            </div>
-          </section>
+            </motion.section>
+          )}
 
-          {/* Activity Feed */}
-          <section className="space-y-4">
+          {activePanel === 'schools' && (
+            <motion.section 
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: 10 }}
+              className="space-y-4"
+            >
+              <h2 className="text-lg font-black text-slate-900 flex items-center gap-2">
+                <School className="w-5 h-5 text-purple-500" /> Registered Schools
+              </h2>
+              <div className="bg-white rounded-[32px] border border-slate-200 shadow-sm overflow-hidden text-sm">
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left border-collapse">
+                    <thead>
+                      <tr className="bg-slate-50 border-b border-slate-100">
+                        <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">School Name</th>
+                        <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Code</th>
+                        <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Students</th>
+                        <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Earnings</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-50">
+                      {schools.map((s) => (
+                        <tr key={s.school_id} className="hover:bg-slate-50 transition-colors">
+                          <td className="px-6 py-4 text-sm font-bold text-slate-800">{s.school_name}</td>
+                          <td className="px-6 py-4 text-xs font-mono font-black text-purple-600">{s.referral_code}</td>
+                          <td className="px-6 py-4 text-xs font-bold text-slate-600">{s.total_students}</td>
+                          <td className="px-6 py-4 text-sm font-black text-nigeria-green">₦{s.total_earnings?.toLocaleString()}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </motion.section>
+          )}
+
+          {activePanel === 'revenue' && (
+            <motion.section 
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: 10 }}
+              className="space-y-4"
+            >
+              <h2 className="text-lg font-black text-slate-900 flex items-center gap-2">
+                <TrendingUp className="w-5 h-5 text-green-500" /> Revenue Ranking
+              </h2>
+              <div className="bg-white rounded-[32px] border border-slate-200 shadow-sm overflow-hidden">
+                <div className="p-4 space-y-3">
+                  {schools.sort((a, b) => (b.total_earnings || 0) - (a.total_earnings || 0)).filter(s => (s.total_earnings || 0) > 0).map((s, i) => (
+                    <div key={s.school_id} className="flex items-center justify-between p-4 bg-slate-50 rounded-2xl">
+                      <div className="flex items-center gap-4">
+                        <div className="w-8 h-8 rounded-full bg-slate-200 flex items-center justify-center text-xs font-black">#{i+1}</div>
+                        <div>
+                          <p className="text-sm font-bold text-slate-800">{s.school_name}</p>
+                          <p className="text-[10px] text-slate-400">{s.referral_code}</p>
+                        </div>
+                      </div>
+                      <p className="text-base font-black text-nigeria-green">₦{s.total_earnings.toLocaleString()}</p>
+                    </div>
+                  ))}
+                  {schools.filter(s => (s.total_earnings || 0) > 0).length === 0 && (
+                    <div className="py-10 text-center text-sm text-slate-400 italic">No revenue generated yet</div>
+                  )}
+                </div>
+              </div>
+            </motion.section>
+          )}
+
+          {activePanel === 'payouts' && (
+            <motion.section 
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: 10 }}
+              className="space-y-4"
+            >
+              <h2 className="text-lg font-black text-slate-900 flex items-center gap-2">
+                <Wallet className="w-5 h-5 text-orange-500" /> Withdrawal Requests
+              </h2>
+              <div className="bg-white rounded-[32px] border border-slate-200 shadow-sm overflow-hidden">
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left border-collapse">
+                    <thead>
+                      <tr className="bg-slate-50 border-b border-slate-100">
+                        <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">School</th>
+                        <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Amount</th>
+                        <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Status</th>
+                        <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Action</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-50">
+                      {withdrawals.map((w) => (
+                        <tr key={w.id} className="hover:bg-slate-50 transition-colors">
+                          <td className="px-6 py-4">
+                            <p className="text-sm font-bold text-slate-800">{w.school_name}</p>
+                            <p className="text-[10px] text-slate-400">{new Date(w.timestamp).toLocaleDateString()}</p>
+                          </td>
+                          <td className="px-6 py-4 text-sm font-black text-slate-900">₦{w.amount.toLocaleString()}</td>
+                          <td className="px-6 py-4">
+                            <span className={cn(
+                              "px-2 py-1 rounded-full text-[10px] font-black uppercase",
+                              w.status === 'paid' ? "bg-green-100 text-green-700" : "bg-orange-100 text-orange-700"
+                            )}>
+                              {w.status}
+                            </span>
+                          </td>
+                          <td className="px-6 py-4 text-right">
+                            {w.status === 'pending' && (
+                              <button 
+                                onClick={() => markAsPaid(w.id)}
+                                className="bg-nigeria-green text-white px-4 py-2 rounded-xl text-xs font-bold hover:bg-green-700 transition-all shadow-md active:scale-95"
+                              >
+                                Mark Paid
+                              </button>
+                            )}
+                          </td>
+                        </tr>
+                      ))}
+                      {withdrawals.length === 0 && (
+                        <tr>
+                          <td colSpan={4} className="px-6 py-10 text-center text-sm text-slate-400 italic">No withdrawal requests found</td>
+                        </tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </motion.section>
+          )}
+        </AnimatePresence>
+
+        {/* Default Activity Feed (when no panel is active) */}
+        {!activePanel && (
+          <motion.section 
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            className="space-y-4"
+          >
             <h2 className="text-lg font-black text-slate-900 flex items-center gap-2">
-              <Activity className="w-5 h-5 text-blue-500" /> Activity
+              <Activity className="w-5 h-5 text-blue-500" /> System Activity
             </h2>
             <div className="bg-white rounded-[32px] border border-slate-200 shadow-sm overflow-hidden">
               <div className="p-4 space-y-4">
                 {activity.map((a, i) => (
-                  <div key={i} className="flex items-start gap-3 p-3 border-b border-slate-50 last:border-0">
+                  <div key={i} className="flex items-start gap-4 p-4 hover:bg-slate-50 transition-colors rounded-2xl border border-transparent hover:border-slate-100">
                     <div className={cn(
-                      "p-2 rounded-lg",
+                      "p-3 rounded-xl",
                       a.type === 'payment' ? 'bg-green-50 text-green-600' : 
                       a.type === 'school_registration' ? 'bg-purple-50 text-purple-600' : 'bg-orange-50 text-orange-600'
                     )}>
-                      {a.type === 'payment' ? <DollarSign className="w-3 h-3" /> : 
-                       a.type === 'school_registration' ? <School className="w-3 h-3" /> : <Wallet className="w-3 h-3" />}
+                      {a.type === 'payment' ? <DollarSign className="w-4 h-4" /> : 
+                       a.type === 'school_registration' ? <School className="w-4 h-4" /> : <Wallet className="w-4 h-4" />}
                     </div>
                     <div>
-                      <p className="text-xs font-bold text-slate-800">
-                        {a.type === 'payment' ? `New Payment: ₦${a.amount}` : 
-                         a.type === 'school_registration' ? `New School: ${a.school_name}` : `Withdrawal: ${a.school_name}`}
+                      <p className="text-sm font-bold text-slate-800">
+                        {a.type === 'payment' ? `Subscription: ₦${a.details?.amount}` : 
+                         a.type === 'school_registration' ? `School Platform Launched: ${a.details?.school_name}` : `Withdrawal Request: ${a.details?.school_name}`}
                       </p>
-                      <p className="text-[10px] text-slate-400">{new Date(a.timestamp).toLocaleTimeString()}</p>
+                      <div className="flex items-center gap-2 mt-1">
+                        <span className="text-[10px] text-slate-400 font-medium">{new Date(a.timestamp).toLocaleDateString()} at {new Date(a.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                        <div className="w-1 h-1 bg-slate-300 rounded-full" />
+                        <span className="text-[10px] text-slate-500 font-bold uppercase tracking-widest">{a.type}</span>
+                      </div>
                     </div>
                   </div>
                 ))}
+                {activity.length === 0 && (
+                  <div className="py-20 text-center text-sm text-slate-400 italic">No recent activity detected</div>
+                )}
               </div>
             </div>
-          </section>
-        </div>
+          </motion.section>
+        )}
       </main>
     </div>
   );
@@ -828,8 +865,6 @@ function MainApp({ user, profile, onLogin, onLogout, refreshProfile, showToast, 
   const [audioUrl, setAudioUrl] = useState<string | null>(null);
   const [activeAudioMessageId, setActiveAudioMessageId] = useState<string | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
-  const audioCacheRef = useRef<Record<string, string>>({});
-  const audioPrefetchingRef = useRef<Set<string>>(new Set());
   const [messages, setMessages] = useState<Message[]>([]);
   const [schoolName, setSchoolName] = useState<string | null>(null);
   const [schoolId, setSchoolId] = useState<string | null>(null);
@@ -846,6 +881,7 @@ function MainApp({ user, profile, onLogin, onLogout, refreshProfile, showToast, 
   const [schoolCodeInput, setSchoolCodeInput] = useState('');
   const [schoolNameInput, setSchoolNameInput] = useState('');
   const [schoolPasswordInput, setSchoolPasswordInput] = useState('');
+
   const [isRecording, setIsRecording] = useState(false);
   const [transcribing, setTranscribing] = useState(false);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
@@ -908,7 +944,7 @@ function MainApp({ user, profile, onLogin, onLogout, refreshProfile, showToast, 
       setTranscribing(false);
     }
   };
-  
+
   const userId = user?.uid || "guest";
   const credits = profile?.credits || 0;
   const chatEndRef = useRef<HTMLDivElement>(null);
@@ -980,7 +1016,7 @@ function MainApp({ user, profile, onLogin, onLogout, refreshProfile, showToast, 
     }
   }, [school_slug]);
 
-  // Automatic school joining when landing on a school page
+  // Automatic school joining
   useEffect(() => {
     if (schoolId && userId !== 'guest' && profile && profile.schoolId !== schoolId) {
       const autoJoin = async () => {
@@ -1068,7 +1104,7 @@ function MainApp({ user, profile, onLogin, onLogout, refreshProfile, showToast, 
           imageBase64: userMsg.image,
           school_id: schoolId,
           school_slug: school_slug,
-          isVoice: isRecording
+          isVoice: isRecording // Charge 2 units if currently recording or just finished voice interaction
         })
       });
 
@@ -1132,31 +1168,6 @@ function MainApp({ user, profile, onLogin, onLogout, refreshProfile, showToast, 
     }
   };
 
-  const buildAudioUrl = async (text: string): Promise<string | null> => {
-    try {
-      const res = await fetch(`${API_BASE_URL}/get-audio`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ text, usePidgin, user_id: userId })
-      });
-      const data = await res.json();
-      if (!data.audio) return null;
-      const audioData = Uint8Array.from(atob(data.audio), c => c.charCodeAt(0)).buffer;
-      const int16Array = new Int16Array(audioData);
-      const blob = createWavBlob(int16Array, 24000);
-      return URL.createObjectURL(blob);
-    } catch { return null; }
-  };
-
-  const prefetchAudio = (text: string, messageId: string) => {
-    if (audioCacheRef.current[messageId] || audioPrefetchingRef.current.has(messageId)) return;
-    audioPrefetchingRef.current.add(messageId);
-    buildAudioUrl(text).then(url => {
-      audioPrefetchingRef.current.delete(messageId);
-      if (url) audioCacheRef.current[messageId] = url;
-    });
-  };
-
   const playAudio = async (text: string, messageId: string) => {
     if (activeAudioMessageId === messageId) {
       if (isPlaying) {
@@ -1182,13 +1193,18 @@ function MainApp({ user, profile, onLogin, onLogout, refreshProfile, showToast, 
     setActiveAudioMessageId(messageId);
     
     try {
-      // Use cached audio if already pre-fetched — instant playback
-      let url = audioCacheRef.current[messageId] || null;
-      if (!url) {
-        url = await buildAudioUrl(text);
-      }
+      const res = await fetch(`${API_BASE_URL}/get-audio`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text, usePidgin, user_id: userId })
+      });
+      const data = await res.json();
       
-      if (url) {
+      if (data.audio) {
+        const audioData = Uint8Array.from(atob(data.audio), c => c.charCodeAt(0)).buffer;
+        const int16Array = new Int16Array(audioData);
+        const blob = createWavBlob(int16Array, 24000);
+        const url = URL.createObjectURL(blob);
         
         const audio = new Audio(url);
         audio.preload = "auto";
@@ -1239,26 +1255,43 @@ function MainApp({ user, profile, onLogin, onLogout, refreshProfile, showToast, 
     if (!schoolCodeInput.trim()) return;
 
     try {
-      const res = await fetch(`${API_BASE_URL}/api/join-school`, {
+      const res = await fetch(`${API_BASE_URL}/api/whatsapp/message`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ user_id: userId, query: schoolCodeInput.trim() })
+        body: JSON.stringify({ user_id: userId, user_message: `JOIN ${schoolCodeInput}` })
       });
       const data = await res.json();
-
-      if (res.ok && data.success) {
-        setSchoolName(data.school_name);
-        setSchoolId(data.school_slug);
-        setShowSettings(false);
-        setSchoolCodeInput('');
-        showToast(`Connected to ${data.school_name}!`, "success");
-        navigate(`/${data.school_slug}`);
+      
+      if (data.message.includes("Welcome to ExamPLE")) {
+        const schoolMatch = data.message.match(/Powered by (.*) 🏫/);
+        if (schoolMatch && schoolMatch[1]) {
+          // Try to get the slug for redirection
+          const searchSlug = schoolCodeInput.toLowerCase().replace(/[^a-z0-9]+/g, '-');
+          const slugRes = await fetch(`${API_BASE_URL}/api/schools/by-slug/${searchSlug}`);
+          if (slugRes.ok) {
+            const slugData = await slugRes.json();
+            navigate(`/${slugData.school_slug}`);
+          } else {
+            // Fallback: try direct code lookup if it was a code
+            const codeRes = await fetch(`${API_BASE_URL}/api/schools/by-slug/${schoolCodeInput.toLowerCase()}`);
+            if (codeRes.ok) {
+              const codeData = await codeRes.json();
+              navigate(`/${codeData.school_slug}`);
+            } else {
+              setSchoolName(schoolMatch[1]);
+              setSchoolId(schoolCodeInput);
+            }
+          }
+          setShowSettings(false);
+          setSchoolCodeInput('');
+          showToast(`Success! You are now connected to ${schoolMatch[1]}`, "success");
+        }
       } else {
-        showToast(data.error || "School not found. Try the referral code.", "error");
+        showToast(data.message, "info");
       }
     } catch (err) {
       console.error("Join school error:", err);
-      showToast("Could not connect to school. Please try again.", "error");
+      showToast("Could not join school. Please check the code.", "error");
     }
   };
 
@@ -1441,8 +1474,7 @@ function MainApp({ user, profile, onLogin, onLogout, refreshProfile, showToast, 
                       ) : (
                         <Volume2 className="w-4 h-4" />
                       )}
-                      {(audioLoading && activeAudioMessageId === msg.id) ? "Preparing audio..." :
-                       (isPlaying && activeAudioMessageId === msg.id) ? "Pause" : 
+                      {(isPlaying && activeAudioMessageId === msg.id) ? "Pause" : 
                        (activeAudioMessageId === msg.id && !isPlaying) ? "Resume" : "Listen to Explanation"}
                     </button>
                     <span className="text-[10px] text-slate-400">
@@ -1654,7 +1686,7 @@ function MainApp({ user, profile, onLogin, onLogout, refreshProfile, showToast, 
                   >
                     <div className="text-left">
                       <p className="text-xs font-black uppercase tracking-widest opacity-60 mb-1">
-                        {plan.name} {plan.name !== 'Top-up' && "(30 Days)"}
+                        {plan.name} {plan.name !== 'Top-up' && " (30 Days)"}
                       </p>
                       <p className="text-2xl font-black">₦{plan.price.toLocaleString()}</p>
                     </div>
