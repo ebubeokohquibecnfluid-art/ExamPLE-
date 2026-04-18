@@ -19,12 +19,10 @@ app.get("/health", (req, res) => {
 });
 
 // --- 3. EXPRESS CONFIGURATION ---
-app.use((req: any, res, next) => {
-  let data = '';
-  req.on('data', (chunk: Buffer) => { data += chunk; });
-  req.on('end', () => { req.rawBody = data; next(); });
-});
-app.use(express.json({ limit: "50mb" }));
+app.use(express.json({
+  limit: "50mb",
+  verify: (req: any, res, buf) => { req.rawBody = buf; }
+}));
 app.set("trust proxy", 1);
 
 // --- 4. SAFE DATABASE INITIALIZATION (Non-blocking) ---
