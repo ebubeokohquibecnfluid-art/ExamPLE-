@@ -113,11 +113,14 @@ app.post("/get-audio", async (req, res) => {
 });
 
 app.post("/api/auth/simple", async (req, res) => {
-  const { uid } = req.body;
+  const { uid, returnOnly } = req.body;
   if (!uid || !db) return res.status(400).json({ error: "Missing data" });
   try {
     const user = await db.get("SELECT * FROM users WHERE uid = ?", [uid]);
-    if (!user) await db.run("INSERT INTO users (uid, credits) VALUES (?, ?)", [uid, 10]);
+    if (!user) {
+      if (returnOnly) return res.status(404).json({ error: "Student code not found" });
+      await db.run("INSERT INTO users (uid, credits) VALUES (?, ?)", [uid, 10]);
+    }
     res.json(await db.get("SELECT * FROM users WHERE uid = ?", [uid]));
   } catch (err) { res.status(500).json({ error: "Auth failed" }); }
 });

@@ -36,8 +36,7 @@ import {
   User,
   AlertCircle,
   Mic,
-  MicOff,
-  KeyRound
+  MicOff
 } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import { BrowserRouter, Routes, Route, useParams, useNavigate, Link } from 'react-router-dom';
@@ -1205,19 +1204,19 @@ function MainApp({ user, profile, onLogin, onLogout, refreshProfile, showToast, 
         let blob: Blob;
         
         if (data.mimeType === 'audio/mpeg') {
-          // Authentic Nigerian Voice (MP3)
+          // Direct MP3 from Cloud TTS
           const audioBytes = Uint8Array.from(atob(data.audio), c => c.charCodeAt(0));
           blob = new Blob([audioBytes], { type: 'audio/mpeg' });
         } else {
-          // Fallback Voice (WAV/PCM)
+          // Fallback raw PCM from Gemini
           const audioData = Uint8Array.from(atob(data.audio), c => c.charCodeAt(0)).buffer;
           const int16Array = new Int16Array(audioData);
           blob = createWavBlob(int16Array, 24000);
         }
         
         const url = URL.createObjectURL(blob);
+        
         const audio = new Audio(url);
-      
         audio.preload = "auto";
         audioRef.current = audio;
         setAudioUrl(url);
@@ -1730,7 +1729,7 @@ function MainApp({ user, profile, onLogin, onLogout, refreshProfile, showToast, 
               <div className="space-y-6">
                 {user && (
                   <>
-                    <div className="bg-slate-50 p-4 rounded-2xl flex items-center gap-3">
+                    <div className="bg-slate-50 p-4 rounded-2xl flex items-center gap-3 mb-4">
                       {user.photoURL ? (
                         <img src={user.photoURL} alt="User" className="w-10 h-10 rounded-full" />
                       ) : (
@@ -1740,17 +1739,36 @@ function MainApp({ user, profile, onLogin, onLogout, refreshProfile, showToast, 
                       )}
                       <div className="flex-1 overflow-hidden">
                         <p className="text-sm font-bold text-slate-800 truncate">{user.displayName}</p>
-                        <p className="text-[10px] text-slate-500 truncate">{user.email}</p>
+                        <div className="flex items-center gap-1">
+                          <p className="text-[9px] font-black text-nigeria-green bg-green-50 px-1.5 py-0.5 rounded-md uppercase tracking-wider">{user.code || 'NO CODE'}</p>
+                        </div>
                       </div>
                       <button onClick={onLogout} className="p-2 hover:bg-red-50 text-red-500 rounded-xl transition-all">
                         <LogOut className="w-5 h-5" />
                       </button>
                     </div>
-                    <div className="bg-nigeria-green/5 border border-nigeria-green/20 rounded-2xl px-4 py-3">
-                      <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Your Student Code</p>
-                      <p className="text-xs font-mono font-bold text-nigeria-green break-all">{user.uid}</p>
-                      <p className="text-[10px] text-slate-400 mt-1">Save this — you'll need it to log back in after logging out</p>
-                    </div>
+                    
+                    {user.code && (
+                      <div className="bg-slate-900 rounded-2xl p-4 text-white relative overflow-hidden group mb-4">
+                        <div className="relative z-10">
+                          <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Your Student Code</p>
+                          <div className="flex items-center justify-between">
+                            <p className="text-lg font-black tracking-widest">{user.code}</p>
+                            <button 
+                              onClick={() => {
+                                navigator.clipboard.writeText(user.code || '');
+                                showToast("Code copied to clipboard", "success");
+                              }}
+                              className="p-2 bg-white/10 hover:bg-white/20 rounded-xl transition-all"
+                            >
+                              <Copy className="w-4 h-4" />
+                            </button>
+                          </div>
+                          <p className="text-[9px] text-slate-500 mt-2 italic">Save this code to login from any device.</p>
+                        </div>
+                        <Shield className="absolute -right-4 -bottom-4 w-24 h-24 text-white/5 -rotate-12" />
+                      </div>
+                    )}
                   </>
                 )}
 
@@ -1919,11 +1937,17 @@ export default function App() {
   const [loading, setLoading] = useState(true);
   const [showLoginModal, setShowLoginModal] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
-  const [loginStep, setLoginStep] = useState<'choice' | 'student' | 'returning'>('choice');
+  const [showCodeModal, setShowCodeModal] = useState(false);
+  const [loginStep, setLoginStep] = useState<'choice' | 'student' | 'return'>('choice');
   const [loginName, setLoginName] = useState('');
-  const [loginCode, setLoginCode] = useState('');
-  const [showStudentCode, setShowStudentCode] = useState<string | null>(null);
+  const [returningCode, setReturningCode] = useState('');
+  const [generatedCode, setGeneratedCode] = useState('');
+  const [isLoggingOut, setIsLoggingOut] = useState(false);
   const [toast, setToast] = useState<{ message: string, type: 'success' | 'error' | 'info' } | null>(null);
+
+  const generateStudentCode = () => {
+    return Math.random().toString(36).substring(2, 8).toUpperCase();
+  };
 
   const showToast = (message: string, type: 'success' | 'error' | 'info' = 'info') => {
     setToast({ message, type });
@@ -1975,42 +1999,91 @@ export default function App() {
   const handleLoginSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!loginName.trim()) return;
-    const uid = `user_${Math.random().toString(36).substring(2, 9)}`;
-    const newUser = { uid, displayName: loginName, email: `${uid}@example.com` };
-    localStorage.setItem('exam_uid', uid);
-    localStorage.setItem('exam_user', JSON.stringify(newUser));
-    setUser(newUser);
+    
+    const code = generateStudentCode();
+    const uid = `user_${code}`;
+    const newUser = { uid, displayName: loginName, email: `${uid}@example.com`, code };
+    
+    setGeneratedCode(code);
+    setIsLoggingOut(false);
+    
+    // Store temporarily until they click "I've Saved It"
+    localStorage.setItem('temp_user', JSON.stringify(newUser));
+    setShowCodeModal(true);
     setShowLoginModal(false);
-    setLoginStep('choice');
-    setLoginName('');
-    setLoading(true);
-    fetchProfile(uid);
-    setShowStudentCode(uid);
   };
 
-  const handleReturningLogin = async (e: React.FormEvent) => {
+  const handleLoginWithCode = async (e: React.FormEvent) => {
     e.preventDefault();
-    const code = loginCode.trim();
-    if (!code) return;
-    const savedUser = { uid: code, displayName: "Student", email: `${code}@example.com` };
-    localStorage.setItem('exam_uid', code);
-    localStorage.setItem('exam_user', JSON.stringify(savedUser));
-    setUser(savedUser);
-    setShowLoginModal(false);
-    setLoginStep('choice');
-    setLoginCode('');
+    const cleanCode = returningCode.trim().toUpperCase();
+    if (!cleanCode) return;
+
     setLoading(true);
-    fetchProfile(code);
-    showToast("Welcome back!", "success");
+    try {
+      const uid = cleanCode.startsWith('USER_') ? cleanCode : `user_${cleanCode}`;
+      const res = await fetch(`${API_BASE_URL}/api/auth/simple`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ uid, returnOnly: true })
+      });
+      
+      if (res.ok) {
+        const data = await res.json();
+        const displayCode = cleanCode.replace('USER_', '');
+        const newUser = { uid, displayName: data.displayName || "Student", email: `${uid}@example.com`, code: displayCode };
+        
+        localStorage.setItem('exam_uid', uid);
+        localStorage.setItem('exam_user', JSON.stringify(newUser));
+        setUser(newUser);
+        setProfile(data);
+        setShowLoginModal(false);
+        setLoginStep('choice');
+        setReturningCode('');
+        showToast("Welcome back!", "success");
+      } else {
+        showToast("Invalid code. Please check and try again.", "error");
+      }
+    } catch (err) {
+      showToast("Connection failed", "error");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const finalizeLogin = () => {
+    const tempUser = localStorage.getItem('temp_user');
+    if (tempUser) {
+      const userObj = JSON.parse(tempUser);
+      localStorage.setItem('exam_uid', userObj.uid);
+      localStorage.setItem('exam_user', tempUser);
+      localStorage.removeItem('temp_user');
+      setUser(userObj);
+      fetchProfile(userObj.uid);
+      setShowCodeModal(false);
+      setLoginStep('choice');
+      setLoginName('');
+      showToast(`Welcome, ${userObj.displayName}!`, "success");
+    }
   };
 
   const handleLogout = () => {
-    const uid = localStorage.getItem('exam_uid');
-    if (uid) setShowStudentCode(uid);
+    if (user?.code) {
+      setGeneratedCode(user.code);
+      setIsLoggingOut(true);
+      setShowCodeModal(true);
+      setShowSettings(false);
+    } else {
+      performLogout();
+    }
+  };
+
+  const performLogout = () => {
     localStorage.removeItem('exam_uid');
     localStorage.removeItem('exam_user');
     setUser(null);
     setProfile(null);
+    setShowCodeModal(false);
+    showToast("Logged out successfully", "info");
   };
 
   if (loading) {
@@ -2049,31 +2122,67 @@ export default function App() {
           </motion.div>
         )}
 
-        {showStudentCode && (
-          <div className="fixed inset-0 z-[110] flex items-center justify-center p-6 bg-slate-900/70 backdrop-blur-sm">
-            <motion.div
+        {showCodeModal && (
+          <div className="fixed inset-0 z-[150] flex items-center justify-center p-6 bg-slate-900/60 backdrop-blur-md">
+            <motion.div 
               initial={{ opacity: 0, scale: 0.9, y: 20 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
-              className="bg-white rounded-[40px] p-10 max-w-sm w-full shadow-2xl text-center"
+              exit={{ opacity: 0, scale: 0.9, y: 20 }}
+              className="bg-white rounded-[40px] p-10 max-w-md w-full shadow-2xl text-center"
             >
-              <div className="bg-nigeria-green/10 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-6">
-                <KeyRound className="w-8 h-8 text-nigeria-green" />
+              <div className="bg-nigeria-green/10 w-20 h-20 rounded-3xl flex items-center justify-center mx-auto mb-6">
+                <Shield className="w-10 h-10 text-nigeria-green" />
               </div>
-              <h2 className="text-2xl font-black text-slate-900 mb-2">Save Your Student Code</h2>
-              <p className="text-sm text-slate-500 mb-6">This is the only way to log back in. Write it down or screenshot this screen.</p>
-              <div className="bg-slate-50 border-2 border-nigeria-green/30 rounded-2xl px-6 py-4 mb-6">
-                <p className="text-xs text-slate-400 uppercase font-black tracking-widest mb-1">Your Student Code</p>
-                <p className="text-lg font-black text-nigeria-green tracking-widest break-all">{showStudentCode}</p>
+              
+              <h2 className="text-2xl font-black text-slate-900 mb-2">
+                {isLoggingOut ? "Logout Confirmation" : "Save Your Student Code"}
+              </h2>
+              <p className="text-sm text-slate-500 mb-8 leading-relaxed">
+                {isLoggingOut 
+                  ? "Before you log out, make sure you have your Student Code. You will need it to log back in next time."
+                  : "This is your unique access code. Screenshot it or write it down. You'll need it to log back into your account."}
+              </p>
+              
+              <div className="bg-slate-50 border-2 border-dashed border-slate-200 rounded-3xl p-8 mb-8 relative group">
+                <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 text-left ml-1">Your Code</p>
+                <div className="flex items-center justify-between">
+                  <span className="text-3xl font-black tracking-[0.2em] text-slate-900">{generatedCode}</span>
+                  <button 
+                    onClick={() => {
+                      navigator.clipboard.writeText(generatedCode);
+                      showToast("Code copied to clipboard!", "success");
+                    }}
+                    className="p-3 bg-white border border-slate-200 rounded-2xl shadow-sm hover:border-nigeria-green hover:text-nigeria-green transition-all"
+                  >
+                    <Copy className="w-5 h-5" />
+                  </button>
+                </div>
               </div>
-              <button
-                onClick={() => {
-                  navigator.clipboard?.writeText(showStudentCode).catch(() => {});
-                  setShowStudentCode(null);
-                }}
-                className="w-full bg-nigeria-green text-white py-4 rounded-2xl font-black text-lg shadow-lg shadow-green-900/10 hover:bg-green-700 transition-all active:scale-95"
-              >
-                I've Saved It — Continue
-              </button>
+
+              <div className="space-y-4">
+                <button 
+                  onClick={() => {
+                    navigator.clipboard.writeText(generatedCode);
+                    if (isLoggingOut) {
+                      performLogout();
+                    } else {
+                      finalizeLogin();
+                    }
+                  }}
+                  className="w-full bg-slate-900 text-white py-5 rounded-2xl font-black text-lg shadow-xl shadow-slate-900/20 hover:scale-[1.02] transition-all"
+                >
+                  I've Saved It
+                </button>
+                
+                {isLoggingOut && (
+                  <button 
+                    onClick={() => setShowCodeModal(false)}
+                    className="text-sm font-bold text-slate-400 hover:text-slate-600 transition-all"
+                  >
+                    Cancel Logout
+                  </button>
+                )}
+              </div>
             </motion.div>
           </div>
         )}
@@ -2088,7 +2197,7 @@ export default function App() {
             >
               <div className="flex justify-between items-start mb-6">
                 <div className="bg-nigeria-green/10 p-3 rounded-2xl">
-                  {loginStep !== 'choice' ? (
+                  {loginStep === 'student' ? (
                     <button onClick={() => setLoginStep('choice')} className="hover:scale-110 transition-all">
                       <ArrowLeft className="w-8 h-8 text-nigeria-green" />
                     </button>
@@ -2112,24 +2221,24 @@ export default function App() {
                       className="w-full flex items-center gap-4 p-6 bg-slate-50 rounded-3xl border-2 border-transparent hover:border-nigeria-green hover:bg-white transition-all group text-left"
                     >
                       <div className="bg-white p-3 rounded-2xl shadow-sm group-hover:scale-110 transition-all">
-                        <BookOpen className="w-6 h-6 text-nigeria-green" />
+                        <Plus className="w-6 h-6 text-nigeria-green" />
                       </div>
                       <div>
                         <p className="font-black text-slate-900">New Student</p>
-                        <p className="text-xs text-slate-500">Start learning and pass your exams</p>
+                        <p className="text-xs text-slate-500">Create a fresh learning account</p>
                       </div>
                     </button>
 
                     <button 
-                      onClick={() => setLoginStep('returning')}
-                      className="w-full flex items-center gap-4 p-6 bg-slate-50 rounded-3xl border-2 border-transparent hover:border-nigeria-green hover:bg-white transition-all group text-left"
+                      onClick={() => setLoginStep('return')}
+                      className="w-full flex items-center gap-4 p-6 bg-slate-50 rounded-3xl border-2 border-transparent hover:border-blue-500 hover:bg-white transition-all group text-left"
                     >
                       <div className="bg-white p-3 rounded-2xl shadow-sm group-hover:scale-110 transition-all">
-                        <KeyRound className="w-6 h-6 text-nigeria-green" />
+                        <RotateCw className="w-6 h-6 text-blue-500" />
                       </div>
                       <div>
                         <p className="font-black text-slate-900">Returning Student</p>
-                        <p className="text-xs text-slate-500">Log back in with your student code</p>
+                        <p className="text-xs text-slate-500">Enter your code to get back in</p>
                       </div>
                     </button>
 
@@ -2145,15 +2254,41 @@ export default function App() {
                       </div>
                       <div>
                         <p className="font-black text-slate-900">I am a School</p>
-                        <p className="text-xs text-slate-500">Register your school and earn revenue</p>
+                        <p className="text-xs text-slate-500">Register or manage school portal</p>
                       </div>
                     </button>
                   </div>
                 </>
-              ) : loginStep === 'student' ? (
+              ) : loginStep === 'return' ? (
                 <>
-                  <h2 className="text-2xl font-black text-slate-900 mb-2">New Student</h2>
-                  <p className="text-sm text-slate-500 mb-8">Enter your name to create your account. You'll get a Student Code to save for future logins.</p>
+                  <h2 className="text-2xl font-black text-slate-900 mb-2">Welcome Back</h2>
+                  <p className="text-sm text-slate-500 mb-8">Enter your Student Code to restore your account.</p>
+                  
+                  <form onSubmit={handleLoginWithCode} className="space-y-6">
+                    <div className="space-y-2">
+                      <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Student Code</label>
+                      <input 
+                        type="text" 
+                        autoFocus
+                        value={returningCode}
+                        onChange={(e) => setReturningCode(e.target.value)}
+                        className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-6 py-4 text-center text-xl font-black tracking-widest focus:ring-2 focus:ring-blue-500/10 focus:border-blue-500 outline-none transition-all uppercase"
+                        placeholder="e.g. A1B2C3"
+                        required
+                      />
+                    </div>
+                    <button 
+                      type="submit" 
+                      className="w-full bg-blue-600 text-white py-4 rounded-2xl font-black text-lg shadow-lg shadow-blue-900/10 hover:bg-blue-700 transition-all active:scale-95"
+                    >
+                      Restore Account
+                    </button>
+                  </form>
+                </>
+              ) : (
+                <>
+                  <h2 className="text-2xl font-black text-slate-900 mb-2">Student Login</h2>
+                  <p className="text-sm text-slate-500 mb-8">Enter your name to start learning with ExamPLE.</p>
                   
                   <form onSubmit={handleLoginSubmit} className="space-y-6">
                     <div className="space-y-2">
@@ -2172,33 +2307,7 @@ export default function App() {
                       type="submit" 
                       className="w-full bg-nigeria-green text-white py-4 rounded-2xl font-black text-lg shadow-lg shadow-green-900/10 hover:bg-green-700 transition-all active:scale-95"
                     >
-                      Create Account
-                    </button>
-                  </form>
-                </>
-              ) : (
-                <>
-                  <h2 className="text-2xl font-black text-slate-900 mb-2">Returning Student</h2>
-                  <p className="text-sm text-slate-500 mb-8">Enter the Student Code you were given when you first signed up.</p>
-                  
-                  <form onSubmit={handleReturningLogin} className="space-y-6">
-                    <div className="space-y-2">
-                      <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Student Code</label>
-                      <input 
-                        type="text" 
-                        autoFocus
-                        value={loginCode}
-                        onChange={(e) => setLoginCode(e.target.value)}
-                        className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-6 py-4 text-sm font-mono focus:ring-2 focus:ring-nigeria-green/10 focus:border-nigeria-green outline-none transition-all"
-                        placeholder="e.g. user_abc1234"
-                        required
-                      />
-                    </div>
-                    <button 
-                      type="submit" 
-                      className="w-full bg-nigeria-green text-white py-4 rounded-2xl font-black text-lg shadow-lg shadow-green-900/10 hover:bg-green-700 transition-all active:scale-95"
-                    >
-                      Log Back In
+                      Start Learning
                     </button>
                   </form>
                 </>
