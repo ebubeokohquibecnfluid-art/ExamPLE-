@@ -1239,34 +1239,26 @@ function MainApp({ user, profile, onLogin, onLogout, refreshProfile, showToast, 
     if (!schoolCodeInput.trim()) return;
 
     try {
-      const res = await fetch(`${API_BASE_URL}/api/whatsapp/message`, {
+      const res = await fetch(`${API_BASE_URL}/api/join-school`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ user_id: userId, user_message: `JOIN ${schoolCodeInput}` })
+        body: JSON.stringify({ user_id: userId, query: schoolCodeInput.trim() })
       });
       const data = await res.json();
-      
-      if (data.message.includes("Welcome to ExamPLE")) {
-        const schoolMatch = data.message.match(/Powered by (.*) 🏫/);
-        if (schoolMatch && schoolMatch[1]) {
-          const slugRes = await fetch(`${API_BASE_URL}/api/schools/by-slug/${schoolCodeInput.toLowerCase()}`);
-          if (slugRes.ok) {
-            const slugData = await slugRes.json();
-            navigate(`/${slugData.school_slug}`);
-          } else {
-            setSchoolName(schoolMatch[1]);
-            setSchoolId(schoolCodeInput);
-          }
-          setShowSettings(false);
-          setSchoolCodeInput('');
-          showToast(`Success! You are now connected to ${schoolMatch[1]}`, "success");
-        }
+
+      if (res.ok && data.success) {
+        setSchoolName(data.school_name);
+        setSchoolId(data.school_slug);
+        setShowSettings(false);
+        setSchoolCodeInput('');
+        showToast(`Connected to ${data.school_name}!`, "success");
+        navigate(`/${data.school_slug}`);
       } else {
-        showToast(data.message, "info");
+        showToast(data.error || "School not found. Try the referral code.", "error");
       }
     } catch (err) {
       console.error("Join school error:", err);
-      showToast("Could not join school. Please check the code.", "error");
+      showToast("Could not connect to school. Please try again.", "error");
     }
   };
 
@@ -1717,7 +1709,7 @@ function MainApp({ user, profile, onLogin, onLogout, refreshProfile, showToast, 
                   <div className="flex gap-2">
                     <input 
                       type="text" 
-                      placeholder="Enter School Code" 
+                      placeholder="School name or referral code" 
                       value={schoolCodeInput}
                       onChange={(e) => setSchoolCodeInput(e.target.value)}
                       className="flex-1 bg-slate-50 border border-slate-200 rounded-2xl px-4 py-3 text-sm focus:ring-2 focus:ring-nigeria-green/20 focus:border-nigeria-green outline-none transition-all"

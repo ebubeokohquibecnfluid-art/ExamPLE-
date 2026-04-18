@@ -183,6 +183,25 @@ app.post("/api/whatsapp/message", async (req, res) => {
   } catch (err) { res.status(500).json({ error: "WhatsApp failed" }); }
 });
 
+app.post("/api/join-school", async (req, res) => {
+  const { user_id, query } = req.body;
+  if (!db || !user_id || !query) return res.status(400).json({ error: "Missing data" });
+  try {
+    const input = query.trim();
+    // Try referral code first (exact, uppercase)
+    let school = await db.get("SELECT * FROM schools WHERE referral_code = ?", [input.toUpperCase()]);
+    // Then try school slug (name-based)
+    if (!school) {
+      const slug = input.toLowerCase().replace(/[^a-z0-9]+/g, '-');
+      school = await db.get("SELECT * FROM schools WHERE school_slug = ?", [slug]);
+    }
+    if (!school) return res.status(404).json({ error: "School not found. Try the referral code instead." });
+    await db.run("UPDATE users SET schoolId = ? WHERE uid = ?", [school.school_id, user_id]);
+    await db.run("UPDATE schools SET total_students = total_students + 1 WHERE school_id = ?", [school.school_id]);
+    res.json({ success: true, school_name: school.school_name, school_slug: school.school_slug });
+  } catch (err) { res.status(500).json({ error: "Join failed" }); }
+});
+
 app.get("/api/schools/by-slug/:slug", async (req, res) => {
   const { slug } = req.params;
   if (!db) return res.status(500).json({ error: "DB missing" });
