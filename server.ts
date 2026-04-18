@@ -142,10 +142,11 @@ app.post("/ask-question", async (req, res) => {
 });
 
 app.post("/register-school", async (req, res) => {
-  const { school_name, password } = req.body;
-  if (!school_name || !password || !db) return res.status(400).json({ error: "Missing data" });
+  const { school_name: raw_name, password } = req.body;
+  if (!raw_name || !password || !db) return res.status(400).json({ error: "Missing data" });
   try {
-    const school_slug = school_name.toLowerCase().replace(/[^a-z0-9]+/g, '-');
+    const school_name = raw_name.trim();
+    const school_slug = school_name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
     const school_id = `sch_${Math.random().toString(36).substring(2, 9)}`;
     const referral_code = Math.random().toString(36).substring(2, 8).toUpperCase();
     await db.run("INSERT INTO schools (school_id, school_name, school_slug, referral_code, password) VALUES (?, ?, ?, ?, ?)", [school_id, school_name, school_slug, referral_code, password]);
@@ -191,7 +192,7 @@ app.post("/api/whatsapp/message", async (req, res) => {
         return res.json({ message: "Please specify a school name or referral code." });
       }
 
-      // Try to find school by school_id, referral code, name, or slug
+      // Try to find school by school_id, referral code, name (trim+case-insensitive), or slug
       let school = await db.get("SELECT * FROM schools WHERE school_id = ?", [searchTerm]);
 
       if (!school) {
@@ -199,12 +200,12 @@ app.post("/api/whatsapp/message", async (req, res) => {
       }
       
       if (!school) {
-        school = await db.get("SELECT * FROM schools WHERE school_name = ?", [searchTerm]);
+        school = await db.get("SELECT * FROM schools WHERE LOWER(TRIM(school_name)) = LOWER(TRIM(?))", [searchTerm]);
       }
 
       if (!school) {
-        const slug = searchTerm.toLowerCase().replace(/[^a-z0-9]+/g, '-');
-        school = await db.get("SELECT * FROM schools WHERE school_slug = ?", [slug]);
+        const slug = searchTerm.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+        school = await db.get("SELECT * FROM schools WHERE TRIM(school_slug, '-') = ?", [slug]);
       }
 
       if (school) {
