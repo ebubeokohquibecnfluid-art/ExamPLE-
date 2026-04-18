@@ -37,7 +37,8 @@ getDb()
 const apiKey = (process.env.REAL_GEMINI_KEY || process.env.GEMINI_API_KEY || "").trim();
 if (!apiKey) console.error("❌ Missing Gemini API Key");
 const ai = new GoogleGenAI({ apiKey });
-const ttsClient = new TextToSpeechClient();
+const hasGoogleCreds = !!process.env.GOOGLE_APPLICATION_CREDENTIALS;
+const ttsClient = hasGoogleCreds ? new TextToSpeechClient() : null;
 
 const PAYSTACK_SECRET = process.env.PAYSTACK_SECRET_KEY;
 const PLAN_PRICES = { 'Basic': 2500, 'Premium': 4500, 'Max': 6500, 'Top-up': 500 };
@@ -72,22 +73,24 @@ app.post("/get-audio", async (req, res) => {
       await db.run("UPDATE users SET credits = MAX(0, credits - 1) WHERE uid = ?", [user_id]);
     }
 
-    try {
-      // PRIMARY: Authentic Nigerian Voice (Google Cloud TTS)
-      const [response] = await ttsClient.synthesizeSpeech({
-        input: { text },
-        voice: { languageCode: 'en-NG', name: 'en-NG-Wavenet-A' },
-        audioConfig: { audioEncoding: 'MP3' },
-      });
-      if (response.audioContent) {
-        return res.json({
-          audio: Buffer.from(response.audioContent).toString('base64'),
-          voice: 'en-NG-Wavenet-A',
-          mimeType: 'audio/mpeg'
+    if (ttsClient) {
+      try {
+        // PRIMARY: Authentic Nigerian Voice (Google Cloud TTS)
+        const [response] = await ttsClient.synthesizeSpeech({
+          input: { text },
+          voice: { languageCode: 'en-NG', name: 'en-NG-Wavenet-A' },
+          audioConfig: { audioEncoding: 'MP3' },
         });
+        if (response.audioContent) {
+          return res.json({
+            audio: Buffer.from(response.audioContent).toString('base64'),
+            voice: 'en-NG-Wavenet-A',
+            mimeType: 'audio/mpeg'
+          });
+        }
+      } catch (ttsErr) {
+        console.warn("Cloud TTS failed, falling back to Gemini:", ttsErr.message);
       }
-    } catch (ttsErr) {
-      console.warn("Cloud TTS failed, falling back to Gemini:", ttsErr);
     }
 
     // FALLBACK: Nigerian Persona (Gemini TTS)
@@ -201,6 +204,9 @@ app.post("/ask-question", async (req, res) => {
     res.setHeader('Content-Type', 'text/event-stream');
     const stream = await ai.models.generateContentStream({
       model: "gemini-3.1-flash-lite-preview",
+      config: {
+        systemInstruction: "You are a friendly Nigerian tutor helping students with exam preparation. Write all responses in plain English — never use LaTeX notation like $...$ or \\times. For maths, write expressions in plain text e.g. '1 × 2' or '2²'. Keep explanations clear and encouraging."
+      },
       contents: [{ role: "user", parts: [{ text: questionText }] }],
     });
     for await (const chunk of stream) { if (chunk.text) res.write(`data: ${JSON.stringify({ text: chunk.text })}\n\n`); }
