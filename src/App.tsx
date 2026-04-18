@@ -1201,12 +1201,22 @@ function MainApp({ user, profile, onLogin, onLogout, refreshProfile, showToast, 
       const data = await res.json();
       
       if (data.audio) {
-        const audioData = Uint8Array.from(atob(data.audio), c => c.charCodeAt(0)).buffer;
-        const int16Array = new Int16Array(audioData);
-        const blob = createWavBlob(int16Array, 24000);
-        const url = URL.createObjectURL(blob);
+        let blob: Blob;
         
+        if (data.mimeType === 'audio/mpeg') {
+          // Authentic Nigerian Voice (MP3)
+          const audioBytes = Uint8Array.from(atob(data.audio), c => c.charCodeAt(0));
+          blob = new Blob([audioBytes], { type: 'audio/mpeg' });
+        } else {
+          // Fallback Voice (WAV/PCM)
+          const audioData = Uint8Array.from(atob(data.audio), c => c.charCodeAt(0)).buffer;
+          const int16Array = new Int16Array(audioData);
+          blob = createWavBlob(int16Array, 24000);
+        }
+        
+        const url = URL.createObjectURL(blob);
         const audio = new Audio(url);
+      
         audio.preload = "auto";
         audioRef.current = audio;
         setAudioUrl(url);
