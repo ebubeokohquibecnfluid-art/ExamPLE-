@@ -33,10 +33,6 @@ getDb()
   .then(database => {
     db = database;
     console.log("✅ Database connected in background");
-    
-    // Ensure schema is up to date
-    db.run("ALTER TABLE users ADD COLUMN expiry_date TEXT").catch(() => {});
-    db.run("ALTER TABLE schools ADD COLUMN total_earnings REAL DEFAULT 0").catch(() => {});
   })
   .catch(err => {
     console.error("❌ DB Connection Error:", err);
