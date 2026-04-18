@@ -2024,7 +2024,7 @@ export default function App() {
       const res = await fetch(`${API_BASE_URL}/api/auth/simple`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ uid })
+        body: JSON.stringify({ uid, returnOnly: true })
       });
       
       if (res.ok) {
