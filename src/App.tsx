@@ -36,7 +36,8 @@ import {
   User,
   AlertCircle,
   Mic,
-  MicOff
+  MicOff,
+  KeyRound
 } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import { BrowserRouter, Routes, Route, useParams, useNavigate, Link } from 'react-router-dom';
@@ -1728,22 +1729,29 @@ function MainApp({ user, profile, onLogin, onLogout, refreshProfile, showToast, 
 
               <div className="space-y-6">
                 {user && (
-                  <div className="bg-slate-50 p-4 rounded-2xl flex items-center gap-3 mb-4">
-                    {user.photoURL ? (
-                      <img src={user.photoURL} alt="User" className="w-10 h-10 rounded-full" />
-                    ) : (
-                      <div className="w-10 h-10 rounded-full bg-nigeria-green/10 flex items-center justify-center">
-                        <User className="w-6 h-6 text-nigeria-green" />
+                  <>
+                    <div className="bg-slate-50 p-4 rounded-2xl flex items-center gap-3">
+                      {user.photoURL ? (
+                        <img src={user.photoURL} alt="User" className="w-10 h-10 rounded-full" />
+                      ) : (
+                        <div className="w-10 h-10 rounded-full bg-nigeria-green/10 flex items-center justify-center">
+                          <User className="w-6 h-6 text-nigeria-green" />
+                        </div>
+                      )}
+                      <div className="flex-1 overflow-hidden">
+                        <p className="text-sm font-bold text-slate-800 truncate">{user.displayName}</p>
+                        <p className="text-[10px] text-slate-500 truncate">{user.email}</p>
                       </div>
-                    )}
-                    <div className="flex-1 overflow-hidden">
-                      <p className="text-sm font-bold text-slate-800 truncate">{user.displayName}</p>
-                      <p className="text-[10px] text-slate-500 truncate">{user.email}</p>
+                      <button onClick={onLogout} className="p-2 hover:bg-red-50 text-red-500 rounded-xl transition-all">
+                        <LogOut className="w-5 h-5" />
+                      </button>
                     </div>
-                    <button onClick={onLogout} className="p-2 hover:bg-red-50 text-red-500 rounded-xl transition-all">
-                      <LogOut className="w-5 h-5" />
-                    </button>
-                  </div>
+                    <div className="bg-nigeria-green/5 border border-nigeria-green/20 rounded-2xl px-4 py-3">
+                      <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Your Student Code</p>
+                      <p className="text-xs font-mono font-bold text-nigeria-green break-all">{user.uid}</p>
+                      <p className="text-[10px] text-slate-400 mt-1">Save this — you'll need it to log back in after logging out</p>
+                    </div>
+                  </>
                 )}
 
                 <form onSubmit={handleJoinSchool} className="space-y-3">
@@ -1911,8 +1919,10 @@ export default function App() {
   const [loading, setLoading] = useState(true);
   const [showLoginModal, setShowLoginModal] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
-  const [loginStep, setLoginStep] = useState<'choice' | 'student'>('choice');
+  const [loginStep, setLoginStep] = useState<'choice' | 'student' | 'returning'>('choice');
   const [loginName, setLoginName] = useState('');
+  const [loginCode, setLoginCode] = useState('');
+  const [showStudentCode, setShowStudentCode] = useState<string | null>(null);
   const [toast, setToast] = useState<{ message: string, type: 'success' | 'error' | 'info' } | null>(null);
 
   const showToast = (message: string, type: 'success' | 'error' | 'info' = 'info') => {
@@ -1965,27 +1975,42 @@ export default function App() {
   const handleLoginSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!loginName.trim()) return;
-    
-    console.log("Submitting login for:", loginName);
     const uid = `user_${Math.random().toString(36).substring(2, 9)}`;
     const newUser = { uid, displayName: loginName, email: `${uid}@example.com` };
-    
     localStorage.setItem('exam_uid', uid);
     localStorage.setItem('exam_user', JSON.stringify(newUser));
     setUser(newUser);
     setShowLoginModal(false);
     setLoginStep('choice');
+    setLoginName('');
     setLoading(true);
     fetchProfile(uid);
-    showToast(`Welcome, ${loginName}!`, "success");
+    setShowStudentCode(uid);
+  };
+
+  const handleReturningLogin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const code = loginCode.trim();
+    if (!code) return;
+    const savedUser = { uid: code, displayName: "Student", email: `${code}@example.com` };
+    localStorage.setItem('exam_uid', code);
+    localStorage.setItem('exam_user', JSON.stringify(savedUser));
+    setUser(savedUser);
+    setShowLoginModal(false);
+    setLoginStep('choice');
+    setLoginCode('');
+    setLoading(true);
+    fetchProfile(code);
+    showToast("Welcome back!", "success");
   };
 
   const handleLogout = () => {
+    const uid = localStorage.getItem('exam_uid');
+    if (uid) setShowStudentCode(uid);
     localStorage.removeItem('exam_uid');
     localStorage.removeItem('exam_user');
     setUser(null);
     setProfile(null);
-    showToast("Logged out successfully", "info");
   };
 
   if (loading) {
@@ -2024,6 +2049,35 @@ export default function App() {
           </motion.div>
         )}
 
+        {showStudentCode && (
+          <div className="fixed inset-0 z-[110] flex items-center justify-center p-6 bg-slate-900/70 backdrop-blur-sm">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.9, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              className="bg-white rounded-[40px] p-10 max-w-sm w-full shadow-2xl text-center"
+            >
+              <div className="bg-nigeria-green/10 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-6">
+                <KeyRound className="w-8 h-8 text-nigeria-green" />
+              </div>
+              <h2 className="text-2xl font-black text-slate-900 mb-2">Save Your Student Code</h2>
+              <p className="text-sm text-slate-500 mb-6">This is the only way to log back in. Write it down or screenshot this screen.</p>
+              <div className="bg-slate-50 border-2 border-nigeria-green/30 rounded-2xl px-6 py-4 mb-6">
+                <p className="text-xs text-slate-400 uppercase font-black tracking-widest mb-1">Your Student Code</p>
+                <p className="text-lg font-black text-nigeria-green tracking-widest break-all">{showStudentCode}</p>
+              </div>
+              <button
+                onClick={() => {
+                  navigator.clipboard?.writeText(showStudentCode).catch(() => {});
+                  setShowStudentCode(null);
+                }}
+                className="w-full bg-nigeria-green text-white py-4 rounded-2xl font-black text-lg shadow-lg shadow-green-900/10 hover:bg-green-700 transition-all active:scale-95"
+              >
+                I've Saved It — Continue
+              </button>
+            </motion.div>
+          </div>
+        )}
+
         {showLoginModal && (
           <div className="fixed inset-0 z-[100] flex items-center justify-center p-6 bg-slate-900/60 backdrop-blur-sm">
             <motion.div 
@@ -2034,7 +2088,7 @@ export default function App() {
             >
               <div className="flex justify-between items-start mb-6">
                 <div className="bg-nigeria-green/10 p-3 rounded-2xl">
-                  {loginStep === 'student' ? (
+                  {loginStep !== 'choice' ? (
                     <button onClick={() => setLoginStep('choice')} className="hover:scale-110 transition-all">
                       <ArrowLeft className="w-8 h-8 text-nigeria-green" />
                     </button>
@@ -2061,8 +2115,21 @@ export default function App() {
                         <BookOpen className="w-6 h-6 text-nigeria-green" />
                       </div>
                       <div>
-                        <p className="font-black text-slate-900">I am a Student</p>
+                        <p className="font-black text-slate-900">New Student</p>
                         <p className="text-xs text-slate-500">Start learning and pass your exams</p>
+                      </div>
+                    </button>
+
+                    <button 
+                      onClick={() => setLoginStep('returning')}
+                      className="w-full flex items-center gap-4 p-6 bg-slate-50 rounded-3xl border-2 border-transparent hover:border-nigeria-green hover:bg-white transition-all group text-left"
+                    >
+                      <div className="bg-white p-3 rounded-2xl shadow-sm group-hover:scale-110 transition-all">
+                        <KeyRound className="w-6 h-6 text-nigeria-green" />
+                      </div>
+                      <div>
+                        <p className="font-black text-slate-900">Returning Student</p>
+                        <p className="text-xs text-slate-500">Log back in with your student code</p>
                       </div>
                     </button>
 
@@ -2083,10 +2150,10 @@ export default function App() {
                     </button>
                   </div>
                 </>
-              ) : (
+              ) : loginStep === 'student' ? (
                 <>
-                  <h2 className="text-2xl font-black text-slate-900 mb-2">Student Login</h2>
-                  <p className="text-sm text-slate-500 mb-8">Enter your name to start learning with ExamPLE.</p>
+                  <h2 className="text-2xl font-black text-slate-900 mb-2">New Student</h2>
+                  <p className="text-sm text-slate-500 mb-8">Enter your name to create your account. You'll get a Student Code to save for future logins.</p>
                   
                   <form onSubmit={handleLoginSubmit} className="space-y-6">
                     <div className="space-y-2">
@@ -2105,7 +2172,33 @@ export default function App() {
                       type="submit" 
                       className="w-full bg-nigeria-green text-white py-4 rounded-2xl font-black text-lg shadow-lg shadow-green-900/10 hover:bg-green-700 transition-all active:scale-95"
                     >
-                      Start Learning
+                      Create Account
+                    </button>
+                  </form>
+                </>
+              ) : (
+                <>
+                  <h2 className="text-2xl font-black text-slate-900 mb-2">Returning Student</h2>
+                  <p className="text-sm text-slate-500 mb-8">Enter the Student Code you were given when you first signed up.</p>
+                  
+                  <form onSubmit={handleReturningLogin} className="space-y-6">
+                    <div className="space-y-2">
+                      <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Student Code</label>
+                      <input 
+                        type="text" 
+                        autoFocus
+                        value={loginCode}
+                        onChange={(e) => setLoginCode(e.target.value)}
+                        className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-6 py-4 text-sm font-mono focus:ring-2 focus:ring-nigeria-green/10 focus:border-nigeria-green outline-none transition-all"
+                        placeholder="e.g. user_abc1234"
+                        required
+                      />
+                    </div>
+                    <button 
+                      type="submit" 
+                      className="w-full bg-nigeria-green text-white py-4 rounded-2xl font-black text-lg shadow-lg shadow-green-900/10 hover:bg-green-700 transition-all active:scale-95"
+                    >
+                      Log Back In
                     </button>
                   </form>
                 </>
