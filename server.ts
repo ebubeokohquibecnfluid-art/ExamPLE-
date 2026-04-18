@@ -146,6 +146,7 @@ app.post("/register-school", async (req, res) => {
   if (!raw_name || !password || !db) return res.status(400).json({ error: "Missing data" });
   try {
     const school_name = raw_name.trim();
+    if (!school_name) return res.status(400).json({ error: "School name cannot be blank" });
     const school_slug = school_name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
     const school_id = `sch_${Math.random().toString(36).substring(2, 9)}`;
     const referral_code = Math.random().toString(36).substring(2, 8).toUpperCase();
