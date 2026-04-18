@@ -40,6 +40,10 @@ export const db = {
       const snapshot = await firestore.collection('schools').where('school_slug', '==', params[0]).limit(1).get();
       return snapshot.empty ? null : snapshot.docs[0].data();
     }
+    if (q.includes("from schools where school_name = ?")) {
+      const snapshot = await firestore.collection('schools').where('school_name', '==', params[0]).limit(1).get();
+      return snapshot.empty ? null : snapshot.docs[0].data();
+    }
     if (q.includes("from schools where referral_code = ?")) {
       const snapshot = await firestore.collection('schools').where('referral_code', '==', params[0]).limit(1).get();
       return snapshot.empty ? null : snapshot.docs[0].data();
