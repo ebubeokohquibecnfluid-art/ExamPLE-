@@ -188,16 +188,31 @@ app.post("/api/whatsapp/message", async (req, res) => {
   const { user_id, user_message } = req.body;
   if (!db) return res.status(500).json({ error: "DB missing" });
   try {
-    const message = user_message.trim().toUpperCase();
-    if (message.startsWith("JOIN")) {
-      const code = message.split(" ")[1];
-      const school = await db.get("SELECT * FROM schools WHERE referral_code = ?", [code]);
+    const messageUpper = user_message.trim().toUpperCase();
+    if (messageUpper.startsWith("JOIN")) {
+      const searchTerm = user_message.trim().substring(4).trim();
+      if (!searchTerm) {
+        return res.json({ message: "Please specify a school name or referral code." });
+      }
+
+      // Try to find school by referral code, name, or slug
+      let school = await db.get("SELECT * FROM schools WHERE referral_code = ?", [searchTerm.toUpperCase()]);
+      
+      if (!school) {
+        school = await db.get("SELECT * FROM schools WHERE school_name = ?", [searchTerm]);
+      }
+
+      if (!school) {
+        const slug = searchTerm.toLowerCase().replace(/[^a-z0-9]+/g, '-');
+        school = await db.get("SELECT * FROM schools WHERE school_slug = ?", [slug]);
+      }
+
       if (school) {
         await db.run("UPDATE users SET schoolId = ? WHERE uid = ?", [school.school_id, user_id]);
-        return res.json({ message: `Welcome to ExamPLE! Powered by ${school.school_name}.` });
+        return res.json({ message: `Welcome to ExamPLE! Powered by ${school.school_name} 🏫` });
       }
     }
-    res.json({ message: "Command not recognized." });
+    res.json({ message: "Command not recognized. Please type JOIN followed by your school code or name." });
   } catch (err) { res.status(500).json({ error: "WhatsApp failed" }); }
 });
 
