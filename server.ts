@@ -53,10 +53,10 @@ const PLAN_UNITS = { 'Basic': 50, 'Premium': 100, 'Max': 250, 'Top-up': 10 };
 
 // Helper for credits
 const getUserCredits = async (userId) => {
-  if (!db) return 10;
+  if (!db) return 0;
   try {
     const user = await db.get("SELECT credits, expiry_date FROM users WHERE uid = ?", [userId]);
-    if (!user) return 10;
+    if (!user) return 0;
     
     // Check for expiration
     if (user.expiry_date) {
@@ -68,7 +68,7 @@ const getUserCredits = async (userId) => {
     }
     
     return user.credits;
-  } catch (e) { return 10; }
+  } catch (e) { return 0; }
 };
 
 // --- 6. API ENDPOINTS ---
