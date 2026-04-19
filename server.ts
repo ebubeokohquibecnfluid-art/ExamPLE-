@@ -21,7 +21,7 @@ app.get("/health", (req, res) => {
 // --- 3. EXPRESS CONFIGURATION ---
 app.use(express.json({
   limit: "50mb",
-  verify: (req: any, res, buf) => { req.rawBody = buf; }
+  verify: (req: any, _res, buf) => { req.rawBody = buf; }
 }));
 app.set("trust proxy", 1);
 
@@ -31,6 +31,11 @@ getDb()
   .then(database => {
     db = database;
     console.log("✅ Database connected in background");
+    
+    // Ensure schema is up to date
+    db.run("ALTER TABLE users ADD COLUMN expiry_date TEXT").catch(() => {});
+    db.run("ALTER TABLE users ADD COLUMN displayName TEXT").catch(() => {});
+    db.run("ALTER TABLE schools ADD COLUMN total_earnings REAL DEFAULT 0").catch(() => {});
   })
   .catch(err => {
     console.error("❌ DB Connection Error:", err);
@@ -67,48 +72,51 @@ const getUserCredits = async (userId) => {
 };
 
 // --- 6. API ENDPOINTS ---
-
 app.post("/api/auth/simple", async (req, res) => {
   const { uid, returnOnly, displayName } = req.body;
   if (!uid || !db) return res.status(400).json({ error: "Missing data" });
   try {
     const user = await db.get("SELECT * FROM users WHERE uid = ?", [uid]);
     if (!user) {
-      if (returnOnly) return res.status(404).json({ error: "Student code not found" });
-      await db.run("INSERT INTO users (uid, credits, displayName) VALUES (?, ?, ?)", [uid, 10, displayName || null]);
+      if (returnOnly) return res.status(404).json({ error: "User not found" });
+      await db.run("INSERT INTO users (uid, credits, displayName) VALUES (?, ?, ?)", [uid, 10, displayName || "Student"]);
     } else if (displayName && !user.displayName) {
+      // Update name if missing
       await db.run("UPDATE users SET displayName = ? WHERE uid = ?", [displayName, uid]);
     }
     res.json(await db.get("SELECT * FROM users WHERE uid = ?", [uid]));
   } catch (err) { res.status(500).json({ error: "Auth failed" }); }
 });
 
-// School forgot password — verify via referral code
+// School Password Reset
 app.post("/api/schools/reset-password", async (req, res) => {
   const { referral_code, new_password } = req.body;
   if (!referral_code || !new_password || !db) return res.status(400).json({ error: "Missing data" });
-  if (new_password.length < 4) return res.status(400).json({ error: "Password too short" });
   try {
-    const school = await db.get("SELECT * FROM schools WHERE UPPER(TRIM(referral_code)) = UPPER(TRIM(?))", [referral_code]);
-    if (!school) return res.status(404).json({ error: "Referral code not found" });
-    await db.run("UPDATE schools SET password = ? WHERE school_id = ?", [new_password, school.school_id]);
-    res.json({ success: true, school_slug: school.school_slug });
+    const school = await db.get("SELECT * FROM schools WHERE referral_code = ?", [referral_code.toUpperCase()]);
+    if (!school) return res.status(404).json({ error: "Invalid referral code" });
+    
+    await db.run("UPDATE schools SET password = ? WHERE referral_code = ?", [new_password, referral_code.toUpperCase()]);
+    res.json({ success: true, message: "Password reset successfully" });
   } catch (err) { res.status(500).json({ error: "Reset failed" }); }
 });
 
-// Student code recovery — find by name + school slug
+// Student Code Recovery
 app.post("/api/students/recover-code", async (req, res) => {
   const { displayName, school_slug } = req.body;
   if (!displayName || !school_slug || !db) return res.status(400).json({ error: "Missing data" });
   try {
-    const school = await db.get("SELECT school_id FROM schools WHERE school_slug = ?", [school_slug.toLowerCase().trim()]);
+    // Find school first to get school_id
+    const school = await db.get("SELECT school_id FROM schools WHERE school_slug = ?", [school_slug.toLowerCase()]);
     if (!school) return res.status(404).json({ error: "School not found" });
-    const student = await db.get(
-      "SELECT uid, displayName FROM users WHERE LOWER(TRIM(displayName)) = LOWER(TRIM(?)) AND schoolId = ?",
-      [displayName, school.school_id]
-    );
-    if (!student) return res.status(404).json({ error: "No student found with that name at this school" });
-    const code = student.uid.replace("user_", "").toUpperCase();
+
+    // Find student in that school with that name
+    const student = await db.get("SELECT uid, displayName FROM users WHERE displayName = ? AND schoolId = ?", [displayName, school.school_id]);
+    
+    if (!student) return res.status(404).json({ error: "Student not found in this school" });
+    
+    // Convert uid (user_ABCDEF) back to code (ABCDEF)
+    const code = student.uid.replace('user_', '');
     res.json({ success: true, code, displayName: student.displayName });
   } catch (err) { res.status(500).json({ error: "Recovery failed" }); }
 });
@@ -133,92 +141,52 @@ app.post("/api/payments/initialize", async (req, res) => {
   } catch (err) { res.status(500).json({ error: "Payment failed" }); }
 });
 
-async function creditUserPayment(userId: string, creditAmount: number, payAmount: number) {
-  if (!db || !userId || !creditAmount) return;
-  const expiry = new Date();
-  expiry.setDate(expiry.getDate() + 30);
-  await db.run("UPDATE users SET credits = credits + ?, expiry_date = ? WHERE uid = ?", [creditAmount, expiry.toISOString(), userId]);
-  const user = await db.get("SELECT schoolId FROM users WHERE uid = ?", [userId]);
-  if (user?.schoolId) {
-    await db.run("UPDATE schools SET total_earnings = total_earnings + ? WHERE school_id = ?", [payAmount * 0.4, user.schoolId]);
-  }
-  await db.run("INSERT INTO activity (type, details, timestamp) VALUES (?, ?, ?)", [
-    'payment', JSON.stringify({ userId, amount: payAmount, credits: creditAmount }), new Date().toISOString()
-  ]);
-}
-
 app.get("/payment-success", async (req, res) => {
-  const { demo, userId, credits, amount, reference, trxref } = req.query;
-  const ref = (reference || trxref) as string;
-
-  // Real Paystack payment — verify with API
-  if (ref && PAYSTACK_SECRET && db) {
-    try {
-      const verify = await axios.get(`https://api.paystack.co/transaction/verify/${ref}`, {
-        headers: { Authorization: `Bearer ${PAYSTACK_SECRET}` }
-      });
-      const txn = verify.data?.data;
-      if (txn?.status === "success") {
-        const meta = txn.metadata || {};
-        await creditUserPayment(meta.userId, Number(meta.credits), txn.amount / 100);
-      }
-    } catch (_) {}
+  const { demo, userId, credits, amount } = req.query;
+  const creditAmount = Number(credits);
+  const payAmount = Number(amount);
+  
+  if (demo === "true" && userId && creditAmount && db) {
+    const expiry = new Date();
+    expiry.setDate(expiry.getDate() + 30);
+    const expiryStr = expiry.toISOString();
+    
+    await db.run("UPDATE users SET credits = credits + ?, expiry_date = ? WHERE uid = ?", [creditAmount, expiryStr, userId]);
+    
+    // Revenue Sharing (40% to school)
+    const user = await db.get("SELECT schoolId FROM users WHERE uid = ?", [userId]);
+    if (user && user.schoolId) {
+      const schoolComm = payAmount * 0.4;
+      await db.run("UPDATE schools SET total_earnings = total_earnings + ? WHERE school_id = ?", [schoolComm, user.schoolId]);
+    }
+    
+    // Log activity
+    await db.run("INSERT INTO activity (type, details, timestamp) VALUES (?, ?, ?)", [
+      'payment', 
+      JSON.stringify({ userId, amount: payAmount, credits: creditAmount }), 
+      new Date().toISOString()
+    ]);
   }
-
-  // Demo mode
-  if (demo === "true") {
-    await creditUserPayment(userId as string, Number(credits), Number(amount));
-  }
-
   const distPath = path.join(process.cwd(), "dist");
   res.sendFile(path.join(distPath, "index.html"));
 });
 
-// Paystack webhook (server-to-server)
-app.post("/api/payments/webhook", async (req: any, res) => {
-  const hash = require("crypto").createHmac("sha512", PAYSTACK_SECRET || "").update(req.rawBody || "").digest("hex");
-  if (hash !== req.headers["x-paystack-signature"]) return res.status(401).send("Invalid signature");
-  const event = req.body;
-  if (event.event === "charge.success" && db) {
-    const txn = event.data;
-    const meta = txn.metadata || {};
-    await creditUserPayment(meta.userId, Number(meta.credits), txn.amount / 100);
-  }
-  res.sendStatus(200);
-});
-
 app.post("/ask-question", async (req, res) => {
-  const { user_id, questionText, isVoice, level, subject, usePidgin } = req.body;
+  const { user_id, questionText, isVoice } = req.body;
   const cost = isVoice ? 2 : 1;
   try {
     const credits = await getUserCredits(user_id);
     if (credits < cost) return res.status(403).json({ error: "Not enough credits" });
     res.setHeader('Content-Type', 'text/event-stream');
-    const levelCtx = level || "Secondary";
-    const subjectCtx = subject ? ` in ${subject}` : "";
-    const langNote = usePidgin ? " Use Nigerian Pidgin English." : "";
-    const levelGuide = levelCtx === "Primary"
-      ? "You teach Nigerian Primary school pupils (Basic 1–6) and help them prepare for the Common Entrance exam. Use simple, clear language a child can understand."
-      : levelCtx === "Exam"
-      ? "You help Nigerian students prepare for WAEC, NECO, JAMB, and Post-UTME exams. Focus on past question patterns, correct answers, and exam techniques."
-      : "You teach Nigerian Secondary school students (JSS1–SS3) following the Nigerian national curriculum.";
-    const systemInstruction = `You are ExamPLE, an AI tutor for Nigerian students${subjectCtx}. ${levelGuide}
-Give clear, correct, well-explained answers. Always provide the answer, not just an explanation.
-IMPORTANT: Never use LaTeX or dollar signs for math (e.g. never write $x^2$). Write math in plain text (e.g. x squared or x^2).${langNote}`;
     const stream = await ai.models.generateContentStream({
       model: "gemini-2.5-flash",
-      config: { systemInstruction },
       contents: [{ role: "user", parts: [{ text: questionText }] }],
     });
     for await (const chunk of stream) { if (chunk.text) res.write(`data: ${JSON.stringify({ text: chunk.text })}\n\n`); }
     if (db) await db.run("UPDATE users SET credits = MAX(0, credits - ?) WHERE uid = ?", [cost, user_id]);
     res.write(`data: [DONE]\n\n`);
     res.end();
-  } catch (e: any) { 
-    console.error("ask-question error:", e?.message);
-    res.write(`data: ${JSON.stringify({ error: "AI unavailable" })}\n\n`);
-    res.end(); 
-  }
+  } catch (e) { res.end(); }
 });
 
 app.post("/register-school", async (req, res) => {
@@ -485,13 +453,57 @@ app.get("/admin/activity", authenticateAdmin, async (req, res) => {
   } catch (err) { res.status(500).json({ error: "Activity failed" }); }
 });
 
-app.post("/admin/withdrawals/mark-paid", authenticateAdmin, async (req, res) => {
+app.post("/api/withdrawals/mark-paid", authenticateAdmin, async (req, res) => {
   const { withdrawal_id } = req.body;
   if (!db || !withdrawal_id) return res.status(400).json({ error: "Missing data" });
   try {
     await db.run("UPDATE withdrawals SET status = 'paid' WHERE id = ?", [withdrawal_id]);
     res.json({ success: true });
   } catch (err) { res.status(500).json({ error: "Mark paid failed" }); }
+});
+
+// --- SUPPORT CHAT ENDPOINT ---
+app.post("/api/support/chat", async (req, res) => {
+  const { history, message } = req.body;
+  try {
+    const response = await ai.models.generateContent({
+      model: "gemini-2.5-flash",
+      contents: [
+        { 
+          role: 'user', 
+          parts: [{ text: `You are the ExamPLE Support AI. You help students and schools with the ExamPLE platform.
+      
+          KEY KNOWLEDGE:
+          1. Joining: Students join via their school's link (exam-ple.com/slug) or by entering a referral code in Settings.
+          2. Student Codes: Every student has a unique 6-character code (shown in Settings). It's used to log back in.
+          3. Recovery: Students can recover lost codes by providing their name and school slug on the login screen. Schools can reset passwords using their referral code.
+          4. Credits: 1 unit for text questions, 2 units for voice explanations.
+          5. Pricing/Plans:
+             - Basic (30 Days): ₦2,500 for 50 Units
+             - Premium (30 Days): ₦4,500 for 100 Units
+             - Max (30 Days): ₦6,500 for 250 Units
+             - Top-up (Pay as you go): ₦500 for 10 Units
+          6. School SaaS: Schools can register to get their own portal, monitor students, and earn 40% of subscription revenue.
+          7. Payments: Handled securely via Paystack.
+          
+          Keep answers short, friendly, and helpful. Use Nigerian English/slang occasionally if appropriate (e.g., "Abeg", "No wahala").
+          
+          Please acknowledge these instructions and wait for the user's first message.` }] 
+        },
+        { role: 'model', parts: [{ text: "Understood. I am ExamPLE Support AI, ready to help students and schools. How can I assist you today?" }] },
+        ...history.map((m: any) => ({
+          role: m.role === 'user' ? 'user' : 'model',
+          parts: [{ text: m.content }],
+        })),
+        { role: 'user', parts: [{ text: message }] }
+      ],
+    });
+
+    res.json({ text: response.text });
+  } catch (err) {
+    console.error("Support chat error:", err);
+    res.status(500).json({ error: "Support chat failed" });
+  }
 });
 
 // --- 7. API STATUS ---
@@ -504,97 +516,6 @@ app.get("/", (req, res) => {
 });
 
 // --- 8. GLOBAL ERROR HANDLING ---
-// Support chatbot — handles platform queries for students and schools
-app.post("/api/support/chat", async (req, res) => {
-  const { message, history = [] } = req.body;
-  if (!message) return res.status(400).json({ error: "Missing message" });
-  const systemInstruction = `You are ExamPLE Support Assistant — a friendly, helpful chatbot for the ExamPLE AI tutoring platform used by Nigerian students and schools.
-
-PLATFORM KNOWLEDGE:
-## What is ExamPLE?
-ExamPLE is an AI-powered educational platform for Nigerian students. It provides AI tutoring for Primary school, Secondary school, and exam preparation (WAEC, NECO, JAMB, Common Entrance). Schools can sign up and earn 40% revenue from every subscription their students buy.
-
-## How Students Join
-- Visit exam-ple.vercel.app
-- Click "Start Learning" or "Login"
-- Enter your name — a unique 6-character Student Code is generated (e.g. A1B2C3)
-- SAVE this code — you need it to log back in on any device
-- If your school gave you a referral link (e.g. exam-ple.vercel.app/kings-college), open that link first before logging in so your account links to the school
-
-## Student Login / Returning Student
-- Click "Returning Student" on the login screen
-- Enter your 6-character Student Code
-- If you forgot your code: click "Lost your code?" → enter the name you registered with and your school's URL slug (e.g. kings-college) → your code will be shown
-
-## How Schools Join
-- Visit exam-ple.vercel.app and go to "Register School"
-- Enter your school name and create a password
-- You get a unique school dashboard link (e.g. exam-ple.vercel.app/kings-college/dashboard) and a referral code
-- Share your school link with students so their subscriptions are linked to your school
-- Schools earn 40% of every subscription payment from their students
-
-## School Login / Forgot Password
-- Visit your school dashboard link (exam-ple.vercel.app/YOUR-SCHOOL-SLUG/dashboard)
-- Enter your admin password
-- If you forgot your password: click "Forgot password?" on the login page → enter your Referral Code (given at registration) → set a new password
-
-## Credit Plans & Pricing
-- Basic: ₦2,500 → 50 credits (30 days)
-- Premium: ₦4,500 → 100 credits (30 days)
-- Max: ₦6,500 → 250 credits (30 days)
-- Top-up: ₦500 → 10 credits (no expiry change)
-New students get 10 free credits to start.
-
-## How to Make Payment / Buy Credits
-1. Log in as a student
-2. Click the "Buy Credits" or credits button
-3. Choose a plan
-4. You'll be redirected to Paystack (secure Nigerian payment gateway)
-5. Pay with card, bank transfer, or USSD
-6. Credits are added to your account automatically after payment
-
-## How Credits Work
-- Text questions cost 1 credit each
-- Voice questions cost 2 credits each
-- Credits expire 30 days after purchase (Top-up credits don't reset the timer)
-- You can see your credit balance at the top of the screen
-
-## How to Ask Questions (Navigation)
-- Type your question in the text box at the bottom
-- Choose your Level (Primary / Secondary / Exam Prep) from the dropdown
-- Enter your Subject (e.g. Math, Biology)
-- Click the send button or press Enter
-- For voice: tap the microphone icon to ask by voice
-- Click "Listen to Explanation" on any answer to hear it read aloud
-
-## School Dashboard Features
-- View total students, total earnings, and withdrawal history
-- Request withdrawals (minimum ₦5,000)
-- Share your school referral link with students
-
-INSTRUCTIONS:
-- Be friendly, clear, and concise
-- If someone asks about a specific problem, guide them step by step
-- If you don't know something specific, direct them to contact the ExamPLE admin
-- Always respond in the same language the user writes in (English or Pidgin)
-- Never make up information not in the knowledge base above`;
-
-  try {
-    const contents = [
-      ...history.map((h: any) => ({ role: h.role, parts: [{ text: h.content }] })),
-      { role: "user", parts: [{ text: message }] }
-    ];
-    const response = await ai.models.generateContent({
-      model: "gemini-2.5-flash",
-      config: { systemInstruction },
-      contents
-    });
-    res.json({ reply: response.text || "I'm not sure about that. Please contact support." });
-  } catch (err) {
-    res.status(500).json({ error: "Support unavailable" });
-  }
-});
-
 process.on("uncaughtException", (err) => { console.error("Uncaught Exception:", err); });
 process.on("unhandledRejection", (err) => { console.error("Unhandled Rejection:", err); });
 
