@@ -507,6 +507,10 @@ function SchoolDashboard({ showToast }: { showToast: (msg: string, type?: 'succe
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [password, setPassword] = useState('');
   const [loggingIn, setLoggingIn] = useState(false);
+  const [showForgot, setShowForgot] = useState(false);
+  const [forgotRef, setForgotRef] = useState('');
+  const [forgotNewPass, setForgotNewPass] = useState('');
+  const [forgotLoading, setForgotLoading] = useState(false);
 
   const fetchDashboard = async () => {
     try {
@@ -561,6 +565,28 @@ function SchoolDashboard({ showToast }: { showToast: (msg: string, type?: 'succe
     } finally {
       setLoggingIn(false);
     }
+  };
+
+  const handleForgotPassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setForgotLoading(true);
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/schools/forgot-password`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ referral_code: forgotRef.trim(), new_password: forgotNewPass })
+      });
+      const data = await res.json();
+      if (res.ok) {
+        showToast("Password reset! You can now log in.", "success");
+        setShowForgot(false);
+        setForgotRef('');
+        setForgotNewPass('');
+      } else {
+        showToast(data.error || "Reset failed", "error");
+      }
+    } catch { showToast("Connection failed", "error"); }
+    finally { setForgotLoading(false); }
   };
 
   const handleWithdrawal = async (e: React.FormEvent) => {
@@ -644,10 +670,47 @@ function SchoolDashboard({ showToast }: { showToast: (msg: string, type?: 'succe
             >
               {loggingIn ? <Loader2 className="w-4 h-4 animate-spin mx-auto" /> : "Unlock Dashboard"}
             </button>
+            <button type="button" onClick={() => setShowForgot(true)} className="w-full text-center text-xs text-blue-500 hover:text-blue-700 transition-all">
+              Forgot password?
+            </button>
             <Link to="/" className="block text-center text-xs text-slate-400 hover:text-slate-600 transition-all">
               Back to Home
             </Link>
           </form>
+
+          {showForgot && (
+            <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
+              <div className="bg-white rounded-[32px] p-8 max-w-sm w-full shadow-2xl">
+                <h3 className="text-lg font-black text-slate-900 mb-1">Reset Password</h3>
+                <p className="text-xs text-slate-500 mb-6">Enter your school referral code to set a new password.</p>
+                <form onSubmit={handleForgotPassword} className="space-y-4">
+                  <input
+                    type="text"
+                    placeholder="Referral Code (e.g. EXAMPL-XXXX)"
+                    value={forgotRef}
+                    onChange={e => setForgotRef(e.target.value)}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-4 py-3 text-sm outline-none focus:border-nigeria-green"
+                    required
+                  />
+                  <input
+                    type="password"
+                    placeholder="New Password"
+                    value={forgotNewPass}
+                    onChange={e => setForgotNewPass(e.target.value)}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-4 py-3 text-sm outline-none focus:border-nigeria-green"
+                    required
+                    minLength={4}
+                  />
+                  <div className="flex gap-3 pt-2">
+                    <button type="button" onClick={() => setShowForgot(false)} className="flex-1 py-3 rounded-2xl border border-slate-200 text-sm font-bold text-slate-600">Cancel</button>
+                    <button type="submit" disabled={forgotLoading} className="flex-1 py-3 rounded-2xl bg-nigeria-green text-white text-sm font-black">
+                      {forgotLoading ? <Loader2 className="w-4 h-4 animate-spin mx-auto" /> : "Reset"}
+                    </button>
+                  </div>
+                </form>
+              </div>
+            </div>
+          )}
         </motion.div>
       </div>
     );
@@ -1943,6 +2006,11 @@ export default function App() {
   const [returningCode, setReturningCode] = useState('');
   const [generatedCode, setGeneratedCode] = useState('');
   const [isLoggingOut, setIsLoggingOut] = useState(false);
+  const [showRecoverCode, setShowRecoverCode] = useState(false);
+  const [recoverName, setRecoverName] = useState('');
+  const [recoverSchool, setRecoverSchool] = useState('');
+  const [recoverLoading, setRecoverLoading] = useState(false);
+  const [recoveredCode, setRecoveredCode] = useState('');
   const [toast, setToast] = useState<{ message: string, type: 'success' | 'error' | 'info' } | null>(null);
 
   const generateStudentCode = () => {
@@ -2050,6 +2118,25 @@ export default function App() {
     }
   };
 
+  const handleRecoverCode = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setRecoverLoading(true);
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/students/recover`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ display_name: recoverName.trim(), school_slug: recoverSchool.trim().toLowerCase() })
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setRecoveredCode(data.code);
+      } else {
+        showToast(data.error || "Not found", "error");
+      }
+    } catch { showToast("Connection failed", "error"); }
+    finally { setRecoverLoading(false); }
+  };
+
   const finalizeLogin = () => {
     const tempUser = localStorage.getItem('temp_user');
     if (tempUser) {
@@ -2058,6 +2145,12 @@ export default function App() {
       localStorage.setItem('exam_user', tempUser);
       localStorage.removeItem('temp_user');
       setUser(userObj);
+      // Save name to backend
+      fetch(`${API_BASE_URL}/api/auth/simple`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ uid: userObj.uid, display_name: userObj.displayName })
+      }).catch(() => {});
       fetchProfile(userObj.uid);
       setShowCodeModal(false);
       setLoginStep('choice');
@@ -2283,7 +2376,47 @@ export default function App() {
                     >
                       Restore Account
                     </button>
+                    <button type="button" onClick={() => { setShowRecoverCode(true); setRecoveredCode(''); }} className="w-full text-center text-xs text-blue-500 hover:text-blue-700 transition-all">
+                      Lost your code?
+                    </button>
                   </form>
+
+                  {showRecoverCode && (
+                    <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
+                      <div className="bg-white rounded-[32px] p-8 max-w-sm w-full shadow-2xl">
+                        {recoveredCode ? (
+                          <>
+                            <h3 className="text-lg font-black text-slate-900 mb-1">Code Found!</h3>
+                            <p className="text-xs text-slate-500 mb-4">Here is your student code. Save it somewhere safe.</p>
+                            <div className="bg-blue-50 rounded-2xl p-4 text-center mb-6">
+                              <p className="text-3xl font-black tracking-widest text-blue-700">{recoveredCode}</p>
+                            </div>
+                            <div className="flex gap-3">
+                              <button onClick={() => navigator.clipboard.writeText(recoveredCode)} className="flex-1 py-3 rounded-2xl bg-slate-100 text-sm font-bold text-slate-700">Copy</button>
+                              <button onClick={() => { setShowRecoverCode(false); setReturningCode(recoveredCode); setRecoveredCode(''); }} className="flex-1 py-3 rounded-2xl bg-blue-600 text-white text-sm font-black">Log In</button>
+                            </div>
+                          </>
+                        ) : (
+                          <>
+                            <h3 className="text-lg font-black text-slate-900 mb-1">Recover Your Code</h3>
+                            <p className="text-xs text-slate-500 mb-6">Enter the name you used to register and your school's URL slug (e.g. <b>kings-college</b>).</p>
+                            <form onSubmit={handleRecoverCode} className="space-y-4">
+                              <input type="text" placeholder="Your full name" value={recoverName} onChange={e => setRecoverName(e.target.value)}
+                                className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-4 py-3 text-sm outline-none focus:border-blue-500" required />
+                              <input type="text" placeholder="School slug (e.g. kings-college)" value={recoverSchool} onChange={e => setRecoverSchool(e.target.value)}
+                                className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-4 py-3 text-sm outline-none focus:border-blue-500" required />
+                              <div className="flex gap-3 pt-2">
+                                <button type="button" onClick={() => setShowRecoverCode(false)} className="flex-1 py-3 rounded-2xl border border-slate-200 text-sm font-bold text-slate-600">Cancel</button>
+                                <button type="submit" disabled={recoverLoading} className="flex-1 py-3 rounded-2xl bg-blue-600 text-white text-sm font-black">
+                                  {recoverLoading ? <Loader2 className="w-4 h-4 animate-spin mx-auto" /> : "Find Code"}
+                                </button>
+                              </div>
+                            </form>
+                          </>
+                        )}
+                      </div>
+                    </div>
+                  )}
                 </>
               ) : (
                 <>
