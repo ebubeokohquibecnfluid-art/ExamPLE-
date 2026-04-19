@@ -1,66 +1,107 @@
-import Database from 'better-sqlite3';
-import path from 'path';
-import { fileURLToPath } from 'url';
+import pkg from 'pg';
+const { Pool } = pkg;
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const pool = new Pool({
+  connectionString: process.env.DATABASE_URL,
+  ssl: process.env.DATABASE_URL && !process.env.DATABASE_URL.includes('localhost')
+    ? { rejectUnauthorized: false }
+    : false
+});
 
-let db: Database.Database | null = null;
-
-function getConnection(): Database.Database {
-  if (db) return db;
-
-  const dbPath = process.env.DB_PATH
-    || (process.env.NODE_ENV === 'production'
-      ? '/home/user/database.sqlite'
-      : path.join(__dirname, '..', 'database.sqlite'));
-
-  db = new Database(dbPath);
-
-  db.exec(`
-    CREATE TABLE IF NOT EXISTS users (uid TEXT PRIMARY KEY, credits INTEGER DEFAULT 10, schoolId TEXT, expiry_date TEXT, displayName TEXT);
-    CREATE TABLE IF NOT EXISTS schools (school_id TEXT PRIMARY KEY, school_name TEXT, school_slug TEXT UNIQUE, password TEXT, referral_code TEXT UNIQUE, total_students INTEGER DEFAULT 0, total_earnings REAL DEFAULT 0);
-    CREATE TABLE IF NOT EXISTS withdrawals (id TEXT PRIMARY KEY, school_id TEXT, amount INTEGER, status TEXT DEFAULT 'pending', timestamp DATETIME DEFAULT CURRENT_TIMESTAMP);
-    CREATE TABLE IF NOT EXISTS activity (id INTEGER PRIMARY KEY AUTOINCREMENT, type TEXT, details TEXT, timestamp TEXT);
-    CREATE TABLE IF NOT EXISTS stats (key TEXT PRIMARY KEY, value REAL DEFAULT 0);
-  `);
-
-  // Safe migrations
-  try { db.prepare("ALTER TABLE schools ADD COLUMN total_earnings REAL DEFAULT 0").run(); } catch (_) {}
-  try { db.prepare("ALTER TABLE users ADD COLUMN expiry_date TEXT").run(); } catch (_) {}
-  try { db.prepare("ALTER TABLE users ADD COLUMN display_name TEXT").run(); } catch (_) {}
-  try { db.prepare("ALTER TABLE users ADD COLUMN displayName TEXT").run(); } catch (_) {}
-  try { db.prepare("ALTER TABLE withdrawals ADD COLUMN timestamp DATETIME DEFAULT CURRENT_TIMESTAMP").run(); } catch (_) {}
-
-  return db;
+// Convert SQLite-style ? placeholders to PostgreSQL $1, $2, ...
+function toPostgres(query: string): string {
+  let i = 0;
+  return query.replace(/\?/g, () => `$${++i}`);
 }
 
-export const asyncDb = {
-  get: async (query: string, params: any[] = []): Promise<any> => {
-    try {
-      return getConnection().prepare(query).get(...params) ?? null;
-    } catch (e) { console.error("db.get error", e); return null; }
-  },
-
-  run: async (query: string, params: any[] = []): Promise<any> => {
-    try {
-      return getConnection().prepare(query).run(...params);
-    } catch (e) { console.error("db.run error", e); return { changes: 0 }; }
-  },
-
-  all: async (query: string, params: any[] = []): Promise<any[]> => {
-    try {
-      return getConnection().prepare(query).all(...params);
-    } catch (e) { console.error("db.all error", e); return []; }
-  },
-
-  exec: async (query: string): Promise<void> => {
-    try {
-      getConnection().exec(query);
-    } catch (e) { console.error("db.exec error", e); }
+// PostgreSQL lowercases unquoted identifiers — remap back to camelCase for the app
+function transformRow(row: any): any {
+  if (!row) return null;
+  const remap: Record<string, string> = {
+    displayname: 'displayName',
+    schoolid: 'schoolId'
+  };
+  const out: any = {};
+  for (const [k, v] of Object.entries(row)) {
+    out[remap[k] ?? k] = v;
   }
-};
+  return out;
+}
+
+async function ensureSchema(): Promise<void> {
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS users (
+      uid TEXT PRIMARY KEY,
+      credits INTEGER DEFAULT 10,
+      schoolid TEXT,
+      expiry_date TEXT,
+      display_name TEXT,
+      displayname TEXT
+    );
+    CREATE TABLE IF NOT EXISTS schools (
+      school_id TEXT PRIMARY KEY,
+      school_name TEXT,
+      school_slug TEXT UNIQUE,
+      password TEXT,
+      referral_code TEXT UNIQUE,
+      total_students INTEGER DEFAULT 0,
+      total_earnings REAL DEFAULT 0
+    );
+    CREATE TABLE IF NOT EXISTS withdrawals (
+      id TEXT PRIMARY KEY,
+      school_id TEXT,
+      amount INTEGER,
+      status TEXT DEFAULT 'pending',
+      timestamp TEXT
+    );
+    CREATE TABLE IF NOT EXISTS activity (
+      id SERIAL PRIMARY KEY,
+      type TEXT,
+      details TEXT,
+      timestamp TEXT
+    );
+    CREATE TABLE IF NOT EXISTS stats (
+      key TEXT PRIMARY KEY,
+      value REAL DEFAULT 0
+    );
+  `);
+}
+
+let initialized = false;
 
 export async function getDb() {
-  getConnection();
-  return asyncDb;
+  if (!initialized) {
+    await ensureSchema();
+    initialized = true;
+    console.log('✅ PostgreSQL schema ready');
+  }
+
+  return {
+    get: async (query: string, params: any[] = []): Promise<any> => {
+      try {
+        const result = await pool.query(toPostgres(query), params);
+        return result.rows.length > 0 ? transformRow(result.rows[0]) : null;
+      } catch (e) { console.error('db.get error:', e); return null; }
+    },
+
+    run: async (query: string, params: any[] = []): Promise<any> => {
+      try {
+        const result = await pool.query(toPostgres(query), params);
+        return { changes: result.rowCount ?? 0 };
+      } catch (e) { console.error('db.run error:', e); return { changes: 0 }; }
+    },
+
+    all: async (query: string, params: any[] = []): Promise<any[]> => {
+      try {
+        const result = await pool.query(toPostgres(query), params);
+        return result.rows.map(transformRow);
+      } catch (e) { console.error('db.all error:', e); return []; }
+    },
+
+    exec: async (query: string): Promise<void> => {
+      try {
+        await pool.query(query);
+      } catch (e) { console.error('db.exec error:', e); }
+    }
+  };
 }

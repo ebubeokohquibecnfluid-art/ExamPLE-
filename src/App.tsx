@@ -41,8 +41,6 @@ import {
 import ReactMarkdown from 'react-markdown';
 import { BrowserRouter, Routes, Route, useParams, useNavigate, Link } from 'react-router-dom';
 import { cn } from './lib/utils';
-import { doc, onSnapshot } from 'firebase/firestore';
-import { db as firestoreDb } from './firebase';
 
 type StudentLevel = "Primary" | "Secondary" | "Exam";
 
@@ -2247,14 +2245,7 @@ export default function App() {
 
   useEffect(() => {
     if (!user?.uid) return;
-
-    const unsub = onSnapshot(doc(firestoreDb, 'users', user.uid), (doc) => {
-      if (doc.exists()) {
-        setProfile(doc.data() as UserProfile);
-      }
-    });
-
-    return () => unsub();
+    fetchProfile(user.uid);
   }, [user?.uid]);
 
   const handleLoginSubmit = async (e: React.FormEvent) => {
