@@ -31,6 +31,7 @@ getDb()
     
     // Ensure schema is up to date
     db.run("ALTER TABLE users ADD COLUMN expiry_date TEXT").catch(() => {});
+    db.run("ALTER TABLE users ADD COLUMN displayName TEXT").catch(() => {});
     db.run("ALTER TABLE schools ADD COLUMN total_earnings REAL DEFAULT 0").catch(() => {});
   })
   .catch(err => {
@@ -68,18 +69,53 @@ const getUserCredits = async (userId) => {
 };
 
 // --- 6. API ENDPOINTS ---
-
 app.post("/api/auth/simple", async (req, res) => {
-  const { uid, returnOnly } = req.body;
+  const { uid, returnOnly, displayName } = req.body;
   if (!uid || !db) return res.status(400).json({ error: "Missing data" });
   try {
     const user = await db.get("SELECT * FROM users WHERE uid = ?", [uid]);
     if (!user) {
       if (returnOnly) return res.status(404).json({ error: "User not found" });
-      await db.run("INSERT INTO users (uid, credits) VALUES (?, ?)", [uid, 10]);
+      await db.run("INSERT INTO users (uid, credits, displayName) VALUES (?, ?, ?)", [uid, 10, displayName || "Student"]);
+    } else if (displayName && !user.displayName) {
+      // Update name if missing
+      await db.run("UPDATE users SET displayName = ? WHERE uid = ?", [displayName, uid]);
     }
     res.json(await db.get("SELECT * FROM users WHERE uid = ?", [uid]));
   } catch (err) { res.status(500).json({ error: "Auth failed" }); }
+});
+
+// School Password Reset
+app.post("/api/schools/reset-password", async (req, res) => {
+  const { referral_code, new_password } = req.body;
+  if (!referral_code || !new_password || !db) return res.status(400).json({ error: "Missing data" });
+  try {
+    const school = await db.get("SELECT * FROM schools WHERE referral_code = ?", [referral_code.toUpperCase()]);
+    if (!school) return res.status(404).json({ error: "Invalid referral code" });
+    
+    await db.run("UPDATE schools SET password = ? WHERE referral_code = ?", [new_password, referral_code.toUpperCase()]);
+    res.json({ success: true, message: "Password reset successfully" });
+  } catch (err) { res.status(500).json({ error: "Reset failed" }); }
+});
+
+// Student Code Recovery
+app.post("/api/students/recover-code", async (req, res) => {
+  const { displayName, school_slug } = req.body;
+  if (!displayName || !school_slug || !db) return res.status(400).json({ error: "Missing data" });
+  try {
+    // Find school first to get school_id
+    const school = await db.get("SELECT school_id FROM schools WHERE school_slug = ?", [school_slug.toLowerCase()]);
+    if (!school) return res.status(404).json({ error: "School not found" });
+
+    // Find student in that school with that name
+    const student = await db.get("SELECT uid, displayName FROM users WHERE displayName = ? AND schoolId = ?", [displayName, school.school_id]);
+    
+    if (!student) return res.status(404).json({ error: "Student not found in this school" });
+    
+    // Convert uid (user_ABCDEF) back to code (ABCDEF)
+    const code = student.uid.replace('user_', '');
+    res.json({ success: true, code, displayName: student.displayName });
+  } catch (err) { res.status(500).json({ error: "Recovery failed" }); }
 });
 
 app.post("/api/payments/initialize", async (req, res) => {
