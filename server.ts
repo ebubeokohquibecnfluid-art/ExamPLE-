@@ -69,22 +69,22 @@ const getUserCredits = async (userId) => {
 // --- 6. API ENDPOINTS ---
 
 app.post("/api/auth/simple", async (req, res) => {
-  const { uid, returnOnly, display_name } = req.body;
+  const { uid, returnOnly, displayName } = req.body;
   if (!uid || !db) return res.status(400).json({ error: "Missing data" });
   try {
     const user = await db.get("SELECT * FROM users WHERE uid = ?", [uid]);
     if (!user) {
       if (returnOnly) return res.status(404).json({ error: "Student code not found" });
-      await db.run("INSERT INTO users (uid, credits, display_name) VALUES (?, ?, ?)", [uid, 10, display_name || null]);
-    } else if (display_name && !user.display_name) {
-      await db.run("UPDATE users SET display_name = ? WHERE uid = ?", [display_name, uid]);
+      await db.run("INSERT INTO users (uid, credits, displayName) VALUES (?, ?, ?)", [uid, 10, displayName || null]);
+    } else if (displayName && !user.displayName) {
+      await db.run("UPDATE users SET displayName = ? WHERE uid = ?", [displayName, uid]);
     }
     res.json(await db.get("SELECT * FROM users WHERE uid = ?", [uid]));
   } catch (err) { res.status(500).json({ error: "Auth failed" }); }
 });
 
 // School forgot password — verify via referral code
-app.post("/api/schools/forgot-password", async (req, res) => {
+app.post("/api/schools/reset-password", async (req, res) => {
   const { referral_code, new_password } = req.body;
   if (!referral_code || !new_password || !db) return res.status(400).json({ error: "Missing data" });
   if (new_password.length < 4) return res.status(400).json({ error: "Password too short" });
@@ -97,19 +97,19 @@ app.post("/api/schools/forgot-password", async (req, res) => {
 });
 
 // Student code recovery — find by name + school slug
-app.post("/api/students/recover", async (req, res) => {
-  const { display_name, school_slug } = req.body;
-  if (!display_name || !school_slug || !db) return res.status(400).json({ error: "Missing data" });
+app.post("/api/students/recover-code", async (req, res) => {
+  const { displayName, school_slug } = req.body;
+  if (!displayName || !school_slug || !db) return res.status(400).json({ error: "Missing data" });
   try {
     const school = await db.get("SELECT school_id FROM schools WHERE school_slug = ?", [school_slug.toLowerCase().trim()]);
     if (!school) return res.status(404).json({ error: "School not found" });
     const student = await db.get(
-      "SELECT uid FROM users WHERE LOWER(TRIM(display_name)) = LOWER(TRIM(?)) AND schoolId = ?",
-      [display_name, school.school_id]
+      "SELECT uid, displayName FROM users WHERE LOWER(TRIM(displayName)) = LOWER(TRIM(?)) AND schoolId = ?",
+      [displayName, school.school_id]
     );
     if (!student) return res.status(404).json({ error: "No student found with that name at this school" });
     const code = student.uid.replace("user_", "").toUpperCase();
-    res.json({ code });
+    res.json({ success: true, code, displayName: student.displayName });
   } catch (err) { res.status(500).json({ error: "Recovery failed" }); }
 });
 

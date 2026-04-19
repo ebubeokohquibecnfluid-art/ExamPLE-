@@ -27,7 +27,7 @@ function getConnection(): Database.Database {
   // Safe migrations
   try { db.prepare("ALTER TABLE schools ADD COLUMN total_earnings REAL DEFAULT 0").run(); } catch (_) {}
   try { db.prepare("ALTER TABLE users ADD COLUMN expiry_date TEXT").run(); } catch (_) {}
-  try { db.prepare("ALTER TABLE users ADD COLUMN display_name TEXT").run(); } catch (_) {}
+  try { db.prepare("ALTER TABLE users ADD COLUMN displayName TEXT").run(); } catch (_) {}
   try { db.prepare("ALTER TABLE withdrawals ADD COLUMN timestamp DATETIME DEFAULT CURRENT_TIMESTAMP").run(); } catch (_) {}
 
   return db;

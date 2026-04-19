@@ -507,10 +507,10 @@ function SchoolDashboard({ showToast }: { showToast: (msg: string, type?: 'succe
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [password, setPassword] = useState('');
   const [loggingIn, setLoggingIn] = useState(false);
-  const [showForgot, setShowForgot] = useState(false);
-  const [forgotRef, setForgotRef] = useState('');
-  const [forgotNewPass, setForgotNewPass] = useState('');
-  const [forgotLoading, setForgotLoading] = useState(false);
+  const [showReset, setShowReset] = useState(false);
+  const [resetCode, setResetCode] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [resetting, setResetting] = useState(false);
 
   const fetchDashboard = async () => {
     try {
@@ -567,26 +567,29 @@ function SchoolDashboard({ showToast }: { showToast: (msg: string, type?: 'succe
     }
   };
 
-  const handleForgotPassword = async (e: React.FormEvent) => {
+  const handleResetPassword = async (e: React.FormEvent) => {
     e.preventDefault();
-    setForgotLoading(true);
+    setResetting(true);
     try {
-      const res = await fetch(`${API_BASE_URL}/api/schools/forgot-password`, {
+      const res = await fetch(`${API_BASE_URL}/api/schools/reset-password`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ referral_code: forgotRef.trim(), new_password: forgotNewPass })
+        body: JSON.stringify({ referral_code: resetCode, new_password: newPassword })
       });
       const data = await res.json();
       if (res.ok) {
-        showToast("Password reset! You can now log in.", "success");
-        setShowForgot(false);
-        setForgotRef('');
-        setForgotNewPass('');
+        showToast("Password reset successfully! Please log in.", "success");
+        setShowReset(false);
+        setResetCode('');
+        setNewPassword('');
       } else {
-        showToast(data.error || "Reset failed", "error");
+        showToast(data.error || "Reset failed. Check referral code.", "error");
       }
-    } catch { showToast("Connection failed", "error"); }
-    finally { setForgotLoading(false); }
+    } catch (err) {
+      showToast("Reset failed", "error");
+    } finally {
+      setResetting(false);
+    }
   };
 
   const handleWithdrawal = async (e: React.FormEvent) => {
@@ -645,71 +648,93 @@ function SchoolDashboard({ showToast }: { showToast: (msg: string, type?: 'succe
             <div className="bg-nigeria-green/10 w-16 h-16 rounded-3xl flex items-center justify-center mx-auto mb-4">
               <Lock className="w-8 h-8 text-nigeria-green" />
             </div>
-            <h2 className="text-2xl font-black text-slate-900">School Login</h2>
-            <p className="text-sm text-slate-500">Enter your admin password to access the dashboard for <b>{school_slug}</b></p>
+            <h2 className="text-2xl font-black text-slate-900">{showReset ? "Reset Password" : "School Login"}</h2>
+            <p className="text-sm text-slate-500">
+              {showReset 
+                ? "Verify your school's referral code to set a new password."
+                : `Enter your admin password to access the dashboard for ${school_slug === 'dashboard' ? 'your school' : <b>{school_slug}</b>}`
+              }
+            </p>
           </div>
-          <form onSubmit={handleLogin} className="space-y-6">
-            <div className="space-y-2">
-              <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Admin Password</label>
-              <div className="relative">
-                <Lock className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-                <input 
-                  type="password" 
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  className="w-full bg-slate-50 border border-slate-200 rounded-2xl pl-10 pr-4 py-4 text-sm focus:ring-2 focus:ring-nigeria-green/10 focus:border-nigeria-green outline-none transition-all"
-                  placeholder="••••••••"
-                  required
-                />
-              </div>
-            </div>
-            <button 
-              type="submit" 
-              disabled={loggingIn}
-              className="w-full bg-nigeria-green text-white py-4 rounded-2xl font-black text-sm shadow-lg hover:bg-green-700 transition-all active:scale-95"
-            >
-              {loggingIn ? <Loader2 className="w-4 h-4 animate-spin mx-auto" /> : "Unlock Dashboard"}
-            </button>
-            <button type="button" onClick={() => setShowForgot(true)} className="w-full text-center text-xs text-blue-500 hover:text-blue-700 transition-all">
-              Forgot password?
-            </button>
-            <Link to="/" className="block text-center text-xs text-slate-400 hover:text-slate-600 transition-all">
-              Back to Home
-            </Link>
-          </form>
 
-          {showForgot && (
-            <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
-              <div className="bg-white rounded-[32px] p-8 max-w-sm w-full shadow-2xl">
-                <h3 className="text-lg font-black text-slate-900 mb-1">Reset Password</h3>
-                <p className="text-xs text-slate-500 mb-6">Enter your school referral code to set a new password.</p>
-                <form onSubmit={handleForgotPassword} className="space-y-4">
-                  <input
-                    type="text"
-                    placeholder="Referral Code (e.g. EXAMPL-XXXX)"
-                    value={forgotRef}
-                    onChange={e => setForgotRef(e.target.value)}
-                    className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-4 py-3 text-sm outline-none focus:border-nigeria-green"
+          {!showReset ? (
+            <form onSubmit={handleLogin} className="space-y-6">
+              <div className="space-y-2">
+                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Admin Password</label>
+                <div className="relative">
+                  <Lock className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                  <input 
+                    type="password" 
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-2xl pl-10 pr-4 py-4 text-sm focus:ring-2 focus:ring-nigeria-green/10 focus:border-nigeria-green outline-none transition-all"
+                    placeholder="••••••••"
                     required
                   />
-                  <input
-                    type="password"
-                    placeholder="New Password"
-                    value={forgotNewPass}
-                    onChange={e => setForgotNewPass(e.target.value)}
-                    className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-4 py-3 text-sm outline-none focus:border-nigeria-green"
-                    required
-                    minLength={4}
-                  />
-                  <div className="flex gap-3 pt-2">
-                    <button type="button" onClick={() => setShowForgot(false)} className="flex-1 py-3 rounded-2xl border border-slate-200 text-sm font-bold text-slate-600">Cancel</button>
-                    <button type="submit" disabled={forgotLoading} className="flex-1 py-3 rounded-2xl bg-nigeria-green text-white text-sm font-black">
-                      {forgotLoading ? <Loader2 className="w-4 h-4 animate-spin mx-auto" /> : "Reset"}
-                    </button>
-                  </div>
-                </form>
+                </div>
               </div>
-            </div>
+              <button 
+                type="submit" 
+                disabled={loggingIn}
+                className="w-full bg-nigeria-green text-white py-4 rounded-2xl font-black text-sm shadow-lg hover:bg-green-700 transition-all active:scale-95"
+              >
+                {loggingIn ? <Loader2 className="w-4 h-4 animate-spin mx-auto" /> : "Unlock Dashboard"}
+              </button>
+              
+              <div className="flex flex-col gap-3">
+                <button 
+                  type="button"
+                  onClick={() => setShowReset(true)}
+                  className="text-xs font-bold text-slate-400 hover:text-slate-600 transition-all"
+                >
+                  Forgot password?
+                </button>
+                <Link to="/" className="text-center text-xs text-slate-400 hover:text-slate-600 transition-all">
+                  Back to Home
+                </Link>
+              </div>
+            </form>
+          ) : (
+            <form onSubmit={handleResetPassword} className="space-y-6">
+              <div className="space-y-4">
+                <div className="space-y-2">
+                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Referral Code</label>
+                  <input 
+                    type="text" 
+                    value={resetCode}
+                    onChange={(e) => setResetCode(e.target.value)}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-4 py-4 text-sm focus:ring-2 focus:ring-nigeria-green/10 focus:border-nigeria-green outline-none uppercase"
+                    placeholder="e.g. AB1234"
+                    required
+                  />
+                </div>
+                <div className="space-y-2">
+                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">New Password</label>
+                  <input 
+                    type="password" 
+                    value={newPassword}
+                    onChange={(e) => setNewPassword(e.target.value)}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-4 py-4 text-sm focus:ring-2 focus:ring-nigeria-green/10 focus:border-nigeria-green outline-none"
+                    placeholder="Create a new password"
+                    required
+                  />
+                </div>
+              </div>
+              <button 
+                type="submit" 
+                disabled={resetting}
+                className="w-full bg-slate-900 text-white py-4 rounded-2xl font-black text-sm shadow-lg transition-all active:scale-95"
+              >
+                {resetting ? <Loader2 className="w-4 h-4 animate-spin mx-auto" /> : "Reset & Save Password"}
+              </button>
+              <button 
+                type="button"
+                onClick={() => setShowReset(false)}
+                className="w-full text-center text-xs font-bold text-slate-400 hover:text-slate-600 transition-all"
+              >
+                Back to Login
+              </button>
+            </form>
           )}
         </motion.div>
       </div>
@@ -2001,16 +2026,14 @@ export default function App() {
   const [showLoginModal, setShowLoginModal] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [showCodeModal, setShowCodeModal] = useState(false);
-  const [loginStep, setLoginStep] = useState<'choice' | 'student' | 'return'>('choice');
+  const [loginStep, setLoginStep] = useState<'choice' | 'student' | 'return' | 'recover'>('choice');
   const [loginName, setLoginName] = useState('');
   const [returningCode, setReturningCode] = useState('');
+  const [recoveryName, setRecoveryName] = useState('');
+  const [recoverySlug, setRecoverySlug] = useState('');
+  const [recoveredCode, setRecoveredCode] = useState<string | null>(null);
   const [generatedCode, setGeneratedCode] = useState('');
   const [isLoggingOut, setIsLoggingOut] = useState(false);
-  const [showRecoverCode, setShowRecoverCode] = useState(false);
-  const [recoverName, setRecoverName] = useState('');
-  const [recoverSchool, setRecoverSchool] = useState('');
-  const [recoverLoading, setRecoverLoading] = useState(false);
-  const [recoveredCode, setRecoveredCode] = useState('');
   const [toast, setToast] = useState<{ message: string, type: 'success' | 'error' | 'info' } | null>(null);
 
   const generateStudentCode = () => {
@@ -2022,12 +2045,12 @@ export default function App() {
     setTimeout(() => setToast(null), 3000);
   };
 
-  const fetchProfile = async (uid: string) => {
+  const fetchProfile = async (uid: string, displayName?: string) => {
     try {
       const res = await fetch(`${API_BASE_URL}/api/auth/simple`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ uid })
+        body: JSON.stringify({ uid, displayName })
       });
       if (res.ok) {
         const data = await res.json();
@@ -2036,6 +2059,29 @@ export default function App() {
     } catch (err) {
       console.error("Failed to fetch profile:", err);
       showToast("Connection error. Please try again.", "error");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleRecoverCode = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setLoading(true);
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/students/recover-code`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ displayName: recoveryName, school_slug: recoverySlug })
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setRecoveredCode(data.code);
+        showToast("Account found!", "success");
+      } else {
+        showToast(data.error || "Could not recover code", "error");
+      }
+    } catch (err) {
+      showToast("Connection failed", "error");
     } finally {
       setLoading(false);
     }
@@ -2118,25 +2164,6 @@ export default function App() {
     }
   };
 
-  const handleRecoverCode = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setRecoverLoading(true);
-    try {
-      const res = await fetch(`${API_BASE_URL}/api/students/recover`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ display_name: recoverName.trim(), school_slug: recoverSchool.trim().toLowerCase() })
-      });
-      const data = await res.json();
-      if (res.ok) {
-        setRecoveredCode(data.code);
-      } else {
-        showToast(data.error || "Not found", "error");
-      }
-    } catch { showToast("Connection failed", "error"); }
-    finally { setRecoverLoading(false); }
-  };
-
   const finalizeLogin = () => {
     const tempUser = localStorage.getItem('temp_user');
     if (tempUser) {
@@ -2145,16 +2172,13 @@ export default function App() {
       localStorage.setItem('exam_user', tempUser);
       localStorage.removeItem('temp_user');
       setUser(userObj);
-      // Save name to backend
-      fetch(`${API_BASE_URL}/api/auth/simple`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ uid: userObj.uid, display_name: userObj.displayName })
-      }).catch(() => {});
-      fetchProfile(userObj.uid);
+      fetchProfile(userObj.uid, userObj.displayName);
       setShowCodeModal(false);
       setLoginStep('choice');
       setLoginName('');
+      setRecoveryName('');
+      setRecoverySlug('');
+      setRecoveredCode(null);
       showToast(`Welcome, ${userObj.displayName}!`, "success");
     }
   };
@@ -2290,15 +2314,21 @@ export default function App() {
             >
               <div className="flex justify-between items-start mb-6">
                 <div className="bg-nigeria-green/10 p-3 rounded-2xl">
-                  {loginStep === 'student' ? (
-                    <button onClick={() => setLoginStep('choice')} className="hover:scale-110 transition-all">
+                  {loginStep !== 'choice' ? (
+                    <button onClick={() => {
+                      if (loginStep === 'recover' && recoveredCode) {
+                        setRecoveredCode(null);
+                      } else {
+                        setLoginStep(loginStep === 'recover' ? 'return' : 'choice');
+                      }
+                    }} className="hover:scale-110 transition-all">
                       <ArrowLeft className="w-8 h-8 text-nigeria-green" />
                     </button>
                   ) : (
                     <GraduationCap className="w-8 h-8 text-nigeria-green" />
                   )}
                 </div>
-                <button onClick={() => { setShowLoginModal(false); setLoginStep('choice'); }} className="p-2 hover:bg-slate-100 rounded-full transition-all">
+                <button onClick={() => { setShowLoginModal(false); setLoginStep('choice'); setRecoveredCode(null); }} className="p-2 hover:bg-slate-100 rounded-full transition-all">
                   <X className="w-6 h-6 text-slate-400" />
                 </button>
               </div>
@@ -2376,44 +2406,73 @@ export default function App() {
                     >
                       Restore Account
                     </button>
-                    <button type="button" onClick={() => { setShowRecoverCode(true); setRecoveredCode(''); }} className="w-full text-center text-xs text-blue-500 hover:text-blue-700 transition-all">
+                    <button 
+                      type="button"
+                      onClick={() => setLoginStep('recover')}
+                      className="w-full text-center text-xs font-bold text-slate-400 hover:text-slate-600 transition-all"
+                    >
                       Lost your code?
                     </button>
                   </form>
-
-                  {showRecoverCode && (
-                    <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
-                      <div className="bg-white rounded-[32px] p-8 max-w-sm w-full shadow-2xl">
-                        {recoveredCode ? (
-                          <>
-                            <h3 className="text-lg font-black text-slate-900 mb-1">Code Found!</h3>
-                            <p className="text-xs text-slate-500 mb-4">Here is your student code. Save it somewhere safe.</p>
-                            <div className="bg-blue-50 rounded-2xl p-4 text-center mb-6">
-                              <p className="text-3xl font-black tracking-widest text-blue-700">{recoveredCode}</p>
-                            </div>
-                            <div className="flex gap-3">
-                              <button onClick={() => navigator.clipboard.writeText(recoveredCode)} className="flex-1 py-3 rounded-2xl bg-slate-100 text-sm font-bold text-slate-700">Copy</button>
-                              <button onClick={() => { setShowRecoverCode(false); setReturningCode(recoveredCode); setRecoveredCode(''); }} className="flex-1 py-3 rounded-2xl bg-blue-600 text-white text-sm font-black">Log In</button>
-                            </div>
-                          </>
-                        ) : (
-                          <>
-                            <h3 className="text-lg font-black text-slate-900 mb-1">Recover Your Code</h3>
-                            <p className="text-xs text-slate-500 mb-6">Enter the name you used to register and your school's URL slug (e.g. <b>kings-college</b>).</p>
-                            <form onSubmit={handleRecoverCode} className="space-y-4">
-                              <input type="text" placeholder="Your full name" value={recoverName} onChange={e => setRecoverName(e.target.value)}
-                                className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-4 py-3 text-sm outline-none focus:border-blue-500" required />
-                              <input type="text" placeholder="School slug (e.g. kings-college)" value={recoverSchool} onChange={e => setRecoverSchool(e.target.value)}
-                                className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-4 py-3 text-sm outline-none focus:border-blue-500" required />
-                              <div className="flex gap-3 pt-2">
-                                <button type="button" onClick={() => setShowRecoverCode(false)} className="flex-1 py-3 rounded-2xl border border-slate-200 text-sm font-bold text-slate-600">Cancel</button>
-                                <button type="submit" disabled={recoverLoading} className="flex-1 py-3 rounded-2xl bg-blue-600 text-white text-sm font-black">
-                                  {recoverLoading ? <Loader2 className="w-4 h-4 animate-spin mx-auto" /> : "Find Code"}
-                                </button>
-                              </div>
-                            </form>
-                          </>
-                        )}
+                </>
+              ) : loginStep === 'recover' ? (
+                <>
+                  <h2 className="text-2xl font-black text-slate-900 mb-2">Recover Code</h2>
+                  {!recoveredCode ? (
+                    <>
+                      <p className="text-sm text-slate-500 mb-8">Enter your registered name and your school's URL slug to find your code.</p>
+                      <form onSubmit={handleRecoverCode} className="space-y-4">
+                        <div className="space-y-2">
+                          <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Full Name</label>
+                          <input 
+                            type="text" 
+                            className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-6 py-4 text-sm focus:ring-2 focus:ring-nigeria-green/10 focus:border-nigeria-green outline-none"
+                            placeholder="e.g. Ebube Okoh"
+                            value={recoveryName}
+                            onChange={(e) => setRecoveryName(e.target.value)}
+                            required
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">School Slug</label>
+                          <input 
+                            type="text" 
+                            className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-6 py-4 text-sm focus:ring-2 focus:ring-nigeria-green/10 focus:border-nigeria-green outline-none"
+                            placeholder="e.g. kings-college"
+                            value={recoverySlug}
+                            onChange={(e) => setRecoverySlug(e.target.value)}
+                            required
+                          />
+                        </div>
+                        <button className="w-full bg-slate-900 text-white py-4 rounded-2xl font-black">Find My Code</button>
+                      </form>
+                    </>
+                  ) : (
+                    <div className="text-center">
+                      <p className="text-sm text-slate-500 mb-6">Account found! Here is your code:</p>
+                      <div className="bg-slate-50 border-2 border-dashed border-slate-200 rounded-3xl p-6 mb-6">
+                        <span className="text-2xl font-black tracking-widest text-slate-900">{recoveredCode}</span>
+                      </div>
+                      <div className="space-y-3">
+                        <button 
+                          onClick={() => {
+                            navigator.clipboard.writeText(recoveredCode);
+                            showToast("Code copied!", "success");
+                          }}
+                          className="w-full flex items-center justify-center gap-2 bg-slate-100 text-slate-700 py-4 rounded-2xl font-bold"
+                        >
+                          <Copy className="w-4 h-4" /> Copy Code
+                        </button>
+                        <button 
+                          onClick={() => {
+                            setReturningCode(recoveredCode);
+                            setLoginStep('return');
+                            setRecoveredCode(null);
+                          }}
+                          className="w-full bg-nigeria-green text-white py-4 rounded-2xl font-black shadow-lg"
+                        >
+                          Go to Login
+                        </button>
                       </div>
                     </div>
                   )}
