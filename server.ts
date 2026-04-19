@@ -468,60 +468,55 @@ app.post("/api/withdrawals/mark-paid", authenticateAdmin, async (req, res) => {
 app.post("/api/support/chat", async (req, res) => {
   const { history, message } = req.body;
 
-  const SYSTEM_INSTRUCTION = `You are the ExamPLE Support Assistant — a professional, helpful assistant for the ExamPLE AI-powered learning platform for Nigerian students.
+  // --- Scripted answers for common questions (always accurate, no AI drift) ---
+  // More specific patterns must come before general ones
+  const SCRIPTED: { pattern: RegExp; answer: string }[] = [
+    {
+      pattern: /\bschool.*regist|\bregist.*school|\bschool.*portal|\bown.*portal|\bpartner\b/i,
+      answer: `Schools can register on ExamPLE to get their own branded student portal.\n\nBenefits for schools:\n- A unique school link to share with students (exam-ple.vercel.app/your-school)\n- A referral code to onboard students\n- A dashboard to monitor student activity\n- 40% of subscription revenue from your students\n\nTo register, tap the Settings icon inside the app and select "Register Your School".`
+    },
+    {
+      pattern: /\bjoin\b|\bsign.?up\b|\bget started\b|\bcreate.*(account|profile)\b/i,
+      answer: `You can join ExamPLE in two ways — and neither requires a school:\n\n**Option 1 — Join independently (recommended):**\n1. Visit exam-ple.vercel.app\n2. Tap the green "Join" button at the top-right\n3. Select "New Student"\n4. Enter your name\n5. You will receive a unique 6-character Student Code immediately\n6. Save your code and begin learning\n\nNo school link, referral code, or registration form is required.\n\n**Option 2 — Join through your school (optional):**\nIf your school uses ExamPLE, visit the link they share (e.g. exam-ple.vercel.app/school-name) or enter the referral code they gave you in the Settings section of the app.\n\nEither option gives you full access to the platform.`
+    },
+    {
+      pattern: /\bforgot\b.*code|lost.*code|recover.*code|find.*code|code.*lost|can.*t.*log.*in|cannot.*log/i,
+      answer: `To recover your Student Code:\n\n1. On the login screen, tap "Returning Student"\n2. Tap "Lost your code?"\n3. Enter your full name\n   - If you joined independently: leave the school field blank\n   - If you joined through a school: also enter your school's slug (e.g. kings-college)\n4. Your code will be retrieved\n\nIf you are still unable to recover it, please contact your school administrator (if applicable) or reach out to ExamPLE support.`
+    },
+    {
+      pattern: /\bcredit|\bhow.*work|\bunit|\bcharge|\bcost\b/i,
+      answer: `Credits are the currency used for AI answers on ExamPLE:\n\n- **Text question:** 1 credit\n- **Voice explanation:** 2 credits\n\nNew students receive free starter credits when they join. Additional credits are purchased through one of the plans below:\n\n- Basic: ₦2,500 for 50 credits (30 days)\n- Premium: ₦4,500 for 100 credits (30 days)\n- Max: ₦6,500 for 250 credits (30 days)\n- Top-up: ₦500 for 10 credits (pay as you go)\n\nAll payments are processed securely via Paystack.`
+    },
+    {
+      pattern: /\bpric|\bplan|\bpay|\bsubscri|\bhow much\b/i,
+      answer: `ExamPLE offers the following credit plans, all paid securely via Paystack:\n\n- **Basic:** ₦2,500 for 50 credits (valid 30 days)\n- **Premium:** ₦4,500 for 100 credits (valid 30 days)\n- **Max:** ₦6,500 for 250 credits (valid 30 days)\n- **Top-up:** ₦500 for 10 credits (pay as you go, no expiry pressure)\n\nTo purchase, tap the credit/buy button inside the app while logged in.`
+    },
+    {
+      pattern: /\bstudent.*code\b|\bwhat.*code|\bcode.*mean|\bmy.*code\b/i,
+      answer: `Your Student Code is a unique 6-character code assigned to you when you join ExamPLE (for example: AB3X7K).\n\nIt is how you log back into your account from any device — similar to a password.\n\nYou can find your code at any time by opening the Settings panel inside the app. Please save it somewhere safe, as losing it may make it harder to recover your account.`
+    },
+  ];
 
-TONE RULES (strictly enforced):
-- Write in clear, professional, encouraging English only
-- Never use slang, pidgin, or informal phrases of any kind — not "No wahala", not "Abeg", not "easy-peasy", not "Super easy", not any variant
-- Be warm and supportive, but always professional — like a knowledgeable teacher's assistant
+  for (const { pattern, answer } of SCRIPTED) {
+    if (pattern.test(message)) {
+      return res.json({ text: answer });
+    }
+  }
 
-JOINING ExamPLE — TWO options exist, and EITHER works on its own:
+  // --- AI fallback for all other questions ---
+  const SYSTEM_INSTRUCTION = `You are the ExamPLE Support Assistant. ExamPLE is an AI-powered exam preparation platform for Nigerian students (Primary, Secondary, WAEC, NECO, JAMB).
 
-OPTION 1 — INDEPENDENT (no school required, works for anyone):
-Step 1: Visit exam-ple.vercel.app
-Step 2: Tap the green "Join" button at the top-right
-Step 3: Select "New Student"
-Step 4: Enter your name
-Step 5: You receive a unique 6-character Student Code instantly
-Step 6: Save the code carefully and begin learning right away
-No school link, no referral code, and no registration form is needed.
+Respond in professional, clear English only. Do not use slang, pidgin, or informal phrases.
 
-OPTION 2 — VIA SCHOOL (optional, only if your school uses ExamPLE):
-- Visit the link your school shares (e.g. exam-ple.vercel.app/your-school-name) and tap "Join"
-- OR open Settings inside the app and enter the referral code your school gave you
+Key facts:
+- Students can join independently at exam-ple.vercel.app with no school required — tap Join, select New Student, enter a name, get a 6-character code.
+- Students can also join via a school link or referral code (optional).
+- Credits: 1 per text question, 2 per voice explanation.
+- Plans: Basic ₦2,500/50 credits, Premium ₦4,500/100 credits, Max ₦6,500/250 credits, Top-up ₦500/10 credits.
+- Payments via Paystack.
+- Schools earn 40% of student subscription revenue.
 
-ABSOLUTE RULE: Never tell a student that a school link or referral code is required to join. Any student can join independently at any time using Option 1 above.
-
-STUDENT CODES:
-- Every student gets a unique 6-character code when they join (visible in Settings)
-- This code is used to log back in from any device — students must keep it safe
-
-RECOVERING A LOST CODE:
-- On the login screen, tap "Returning Student" then "Lost your code?"
-- Independent students: enter name only, leave the school field blank
-- School-linked students: enter name and their school slug (e.g. kings-college)
-
-CREDITS:
-- Text question costs 1 credit
-- Voice explanation costs 2 credits
-- New students receive free starter credits
-
-PLANS (all payments through Paystack):
-- Basic: ₦2,500 for 50 credits (30 days)
-- Premium: ₦4,500 for 100 credits (30 days)
-- Max: ₦6,500 for 250 credits (30 days)
-- Top-up: ₦500 for 10 credits (pay as you go)
-
-SCHOOLS:
-- Schools register to get a branded student portal
-- Schools earn 40% of subscription revenue from their students
-- School administrators can monitor progress and reset student codes
-
-RESPONSE RULES:
-- Keep responses concise and direct
-- Lead with the answer, then explain if needed
-- Never mention features or prices not listed above
-- Always use plain, professional English`;
+Keep answers concise and factual.`;
 
   try {
     const response = await ai.models.generateContent({
