@@ -104,18 +104,20 @@ app.post("/api/schools/reset-password", async (req, res) => {
 // Student Code Recovery
 app.post("/api/students/recover-code", async (req, res) => {
   const { displayName, school_slug } = req.body;
-  if (!displayName || !school_slug || !db) return res.status(400).json({ error: "Missing data" });
+  if (!displayName || !db) return res.status(400).json({ error: "Missing name" });
   try {
-    // Find school first to get school_id
-    const school = await db.get("SELECT school_id FROM schools WHERE school_slug = ?", [school_slug.toLowerCase()]);
-    if (!school) return res.status(404).json({ error: "School not found" });
-
-    // Find student in that school with that name
-    const student = await db.get("SELECT uid, displayName FROM users WHERE displayName = ? AND schoolId = ?", [displayName, school.school_id]);
-    
-    if (!student) return res.status(404).json({ error: "Student not found in this school" });
-    
-    // Convert uid (user_ABCDEF) back to code (ABCDEF)
+    let student;
+    if (school_slug && school_slug.trim()) {
+      // School-linked student: find by name + school
+      const school = await db.get("SELECT school_id FROM schools WHERE school_slug = ?", [school_slug.toLowerCase().trim()]);
+      if (!school) return res.status(404).json({ error: "School not found. Check the school slug and try again." });
+      student = await db.get("SELECT uid, displayName FROM users WHERE displayName = ? AND schoolId = ?", [displayName, school.school_id]);
+      if (!student) return res.status(404).json({ error: "No student found with that name in this school." });
+    } else {
+      // Independent student: find by name with no school linked
+      student = await db.get("SELECT uid, displayName FROM users WHERE displayName = ? AND schoolId IS NULL", [displayName]);
+      if (!student) return res.status(404).json({ error: "No independent student found with that name." });
+    }
     const code = student.uid.replace('user_', '');
     res.json({ success: true, code, displayName: student.displayName });
   } catch (err) { res.status(500).json({ error: "Recovery failed" }); }
