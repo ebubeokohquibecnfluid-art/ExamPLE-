@@ -476,9 +476,15 @@ app.post("/api/support/chat", async (req, res) => {
           parts: [{ text: `You are the ExamPLE Support AI. You help students and schools with the ExamPLE platform.
       
           KEY KNOWLEDGE:
-          1. Joining: Students join via their school's link (exam-ple.com/slug) or by entering a referral code in Settings.
-          2. Student Codes: Every student has a unique 6-character code (shown in Settings). It's used to log back in.
-          3. Recovery: Students can recover lost codes by providing their name and school slug on the login screen. Schools can reset passwords using their referral code.
+          1. Joining — TWO options, BOTH work:
+             a) INDEPENDENT (no school needed): Visit the main site, tap "Join", select "New Student", enter your name — you get a 6-character code and can start learning immediately. No school, no referral code needed.
+             b) VIA SCHOOL: Visit your school's link (e.g. exam-ple.com/school-name) or enter a referral code in Settings to link your account to a school.
+             IMPORTANT: Students do NOT need a school to use ExamPLE. Independent joining is fully supported.
+          2. Student Codes: Every student gets a unique 6-character code after joining (shown in Settings). Save it — it's how you log back in from any device.
+          3. Recovery — if you lose your code:
+             a) INDEPENDENT students: Tap "Lost your code?" on the login screen, enter your name only (leave the school slug blank). We'll find your account.
+             b) SCHOOL students: Tap "Lost your code?", enter your name AND your school's slug (e.g. kings-college).
+             c) Schools can also reset student passwords using the school's referral code.
           4. Credits: 1 unit for text questions, 2 units for voice explanations.
           5. Pricing/Plans:
              - Basic (30 Days): ₦2,500 for 50 Units
