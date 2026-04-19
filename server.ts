@@ -197,8 +197,13 @@ app.post("/ask-question", async (req, res) => {
     const levelCtx = level || "Secondary";
     const subjectCtx = subject ? ` in ${subject}` : "";
     const langNote = usePidgin ? " Use Nigerian Pidgin English." : "";
-    const systemInstruction = `You are ExamPLE, an AI tutor for Nigerian ${levelCtx} students${subjectCtx}. 
-You help with WAEC, NECO, JAMB, and school exams. Give clear, correct, well-explained answers. 
+    const levelGuide = levelCtx === "Primary"
+      ? "You teach Nigerian Primary school pupils (Basic 1–6) and help them prepare for the Common Entrance exam. Use simple, clear language a child can understand."
+      : levelCtx === "Exam"
+      ? "You help Nigerian students prepare for WAEC, NECO, JAMB, and Post-UTME exams. Focus on past question patterns, correct answers, and exam techniques."
+      : "You teach Nigerian Secondary school students (JSS1–SS3) following the Nigerian national curriculum.";
+    const systemInstruction = `You are ExamPLE, an AI tutor for Nigerian students${subjectCtx}. ${levelGuide}
+Give clear, correct, well-explained answers. Always provide the answer, not just an explanation.
 IMPORTANT: Never use LaTeX or dollar signs for math (e.g. never write $x^2$). Write math in plain text (e.g. x squared or x^2).${langNote}`;
     const stream = await ai.models.generateContentStream({
       model: "gemini-2.5-flash",
