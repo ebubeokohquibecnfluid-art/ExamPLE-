@@ -2558,7 +2558,7 @@ export default function App() {
                   <h2 className="text-2xl font-black text-slate-900 mb-2">Recover Code</h2>
                   {!recoveredCode ? (
                     <>
-                      <p className="text-sm text-slate-500 mb-8">Enter your registered name and your school's URL slug to find your code.</p>
+                      <p className="text-sm text-slate-500 mb-8">Enter your name to find your account. If you joined through a school, also add the school slug.</p>
                       <form onSubmit={handleRecoverCode} className="space-y-4">
                         <div className="space-y-2">
                           <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Full Name</label>
@@ -2572,14 +2572,13 @@ export default function App() {
                           />
                         </div>
                         <div className="space-y-2">
-                          <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">School Slug</label>
+                          <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">School Slug <span className="text-slate-300 normal-case font-semibold">(optional — school students only)</span></label>
                           <input 
                             type="text" 
                             className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-6 py-4 text-sm focus:ring-2 focus:ring-nigeria-green/10 focus:border-nigeria-green outline-none"
-                            placeholder="e.g. kings-college"
+                            placeholder="e.g. kings-college — leave blank if you joined independently"
                             value={recoverySlug}
                             onChange={(e) => setRecoverySlug(e.target.value)}
-                            required
                           />
                         </div>
                         <button className="w-full bg-slate-900 text-white py-4 rounded-2xl font-black">Find My Code</button>
