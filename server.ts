@@ -450,13 +450,57 @@ app.get("/admin/activity", authenticateAdmin, async (req, res) => {
   } catch (err) { res.status(500).json({ error: "Activity failed" }); }
 });
 
-app.post("/admin/withdrawals/mark-paid", authenticateAdmin, async (req, res) => {
+app.post("/api/withdrawals/mark-paid", authenticateAdmin, async (req, res) => {
   const { withdrawal_id } = req.body;
   if (!db || !withdrawal_id) return res.status(400).json({ error: "Missing data" });
   try {
     await db.run("UPDATE withdrawals SET status = 'paid' WHERE id = ?", [withdrawal_id]);
     res.json({ success: true });
   } catch (err) { res.status(500).json({ error: "Mark paid failed" }); }
+});
+
+// --- SUPPORT CHAT ENDPOINT ---
+app.post("/api/support/chat", async (req, res) => {
+  const { history, message } = req.body;
+  try {
+    const response = await ai.models.generateContent({
+      model: "gemini-2.0-flash",
+      contents: [
+        { 
+          role: 'user', 
+          parts: [{ text: `You are the ExamPLE Support AI. You help students and schools with the ExamPLE platform.
+      
+          KEY KNOWLEDGE:
+          1. Joining: Students join via their school's link (exam-ple.com/slug) or by entering a referral code in Settings.
+          2. Student Codes: Every student has a unique 6-character code (shown in Settings). It's used to log back in.
+          3. Recovery: Students can recover lost codes by providing their name and school slug on the login screen. Schools can reset passwords using their referral code.
+          4. Credits: 1 unit for text questions, 2 units for voice explanations.
+          5. Pricing/Plans:
+             - Basic (30 Days): ₦2,500 for 50 Units
+             - Premium (30 Days): ₦4,500 for 100 Units
+             - Max (30 Days): ₦6,500 for 250 Units
+             - Top-up (Pay as you go): ₦500 for 10 Units
+          6. School SaaS: Schools can register to get their own portal, monitor students, and earn 40% of subscription revenue.
+          7. Payments: Handled securely via Paystack.
+          
+          Keep answers short, friendly, and helpful. Use Nigerian English/slang occasionally if appropriate (e.g., "Abeg", "No wahala").
+          
+          Please acknowledge these instructions and wait for the user's first message.` }] 
+        },
+        { role: 'model', parts: [{ text: "Understood. I am ExamPLE Support AI, ready to help students and schools. How can I assist you today?" }] },
+        ...history.map((m: any) => ({
+          role: m.role === 'user' ? 'user' : 'model',
+          parts: [{ text: m.content }],
+        })),
+        { role: 'user', parts: [{ text: message }] }
+      ],
+    });
+
+    res.json({ text: response.text });
+  } catch (err) {
+    console.error("Support chat error:", err);
+    res.status(500).json({ error: "Support chat failed" });
+  }
 });
 
 // --- 7. API STATUS ---
