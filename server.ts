@@ -188,21 +188,32 @@ app.post("/api/payments/webhook", async (req: any, res) => {
 });
 
 app.post("/ask-question", async (req, res) => {
-  const { user_id, questionText, isVoice } = req.body;
+  const { user_id, questionText, isVoice, level, subject, usePidgin } = req.body;
   const cost = isVoice ? 2 : 1;
   try {
     const credits = await getUserCredits(user_id);
     if (credits < cost) return res.status(403).json({ error: "Not enough credits" });
     res.setHeader('Content-Type', 'text/event-stream');
+    const levelCtx = level || "Secondary";
+    const subjectCtx = subject ? ` in ${subject}` : "";
+    const langNote = usePidgin ? " Use Nigerian Pidgin English." : "";
+    const systemInstruction = `You are ExamPLE, an AI tutor for Nigerian ${levelCtx} students${subjectCtx}. 
+You help with WAEC, NECO, JAMB, and school exams. Give clear, correct, well-explained answers. 
+IMPORTANT: Never use LaTeX or dollar signs for math (e.g. never write $x^2$). Write math in plain text (e.g. x squared or x^2).${langNote}`;
     const stream = await ai.models.generateContentStream({
-      model: "gemini-3.1-flash-lite-preview",
+      model: "gemini-2.5-flash",
+      config: { systemInstruction },
       contents: [{ role: "user", parts: [{ text: questionText }] }],
     });
     for await (const chunk of stream) { if (chunk.text) res.write(`data: ${JSON.stringify({ text: chunk.text })}\n\n`); }
     if (db) await db.run("UPDATE users SET credits = MAX(0, credits - ?) WHERE uid = ?", [cost, user_id]);
     res.write(`data: [DONE]\n\n`);
     res.end();
-  } catch (e) { res.end(); }
+  } catch (e: any) { 
+    console.error("ask-question error:", e?.message);
+    res.write(`data: ${JSON.stringify({ error: "AI unavailable" })}\n\n`);
+    res.end(); 
+  }
 });
 
 app.post("/register-school", async (req, res) => {
@@ -255,7 +266,7 @@ app.post("/get-audio", async (req, res) => {
 
     // Fallback: Use Gemini TTS with a Nigerian persona prompt
     const response = await ai.models.generateContent({
-      model: "gemini-3.1-flash-tts-preview",
+      model: "gemini-2.5-flash-preview-tts",
       contents: [{ 
         parts: [{ 
           text: `Say this exactly, but use a friendly, professional Nigerian teacher accent and rhythm: ${text}` 
