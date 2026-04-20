@@ -473,11 +473,11 @@ app.post("/api/support/chat", async (req, res) => {
   const SCRIPTED: { pattern: RegExp; answer: string }[] = [
     {
       pattern: /\bschool.*regist|\bregist.*school|\bschool.*portal|\bown.*portal|\bpartner\b/i,
-      answer: `Schools can register on ExamPLE to get their own branded student portal.\n\nBenefits for schools:\n- A unique school link to share with students (exam-ple.vercel.app/your-school)\n- A referral code to onboard students\n- A dashboard to monitor student activity\n- 40% of subscription revenue from your students\n\nTo register, tap the Settings icon inside the app and select "Register Your School".`
+      answer: `Schools can register on ExamPLE to get their own branded student portal.\n\nBenefits for schools:\n- A unique school link to share with students (exam-ple.xyz/your-school)\n- A referral code to onboard students\n- A dashboard to monitor student activity\n- 40% of subscription revenue from your students\n\nTo register, tap the Settings icon inside the app and select "Register Your School".`
     },
     {
       pattern: /\bjoin\b|\bsign.?up\b|\bget started\b|\bcreate.*(account|profile)\b/i,
-      answer: `There are two ways to join ExamPLE:\n\n**Option 1 — Via your school:**\nIf your school uses ExamPLE, your school administrator will share a unique link (e.g. exam-ple.vercel.app/your-school-name). Visit that link and tap "Join" to be automatically connected to your school. Alternatively, open the Settings section inside the app and enter the referral code your school provided.\n\n**Option 2 — As an independent student:**\nYou do not need a school to use ExamPLE. Simply:\n1. Visit exam-ple.vercel.app\n2. Tap the green "Join" button at the top-right\n3. Select "New Student"\n4. Enter your name\n5. You will receive a unique 6-character Student Code immediately\n6. Save your code and begin learning\n\nNo school link or referral code is required for independent students.`
+      answer: `There are two ways to join ExamPLE:\n\n**Option 1 — Via your school:**\nIf your school uses ExamPLE, your school administrator will share a unique link (e.g. exam-ple.xyz/your-school-name). Visit that link and tap "Join" to be automatically connected to your school. Alternatively, open the Settings section inside the app and enter the referral code your school provided.\n\n**Option 2 — As an independent student:**\nYou do not need a school to use ExamPLE. Simply:\n1. Visit exam-ple.xyz\n2. Tap the green "Join" button at the top-right\n3. Select "New Student"\n4. Enter your name\n5. You will receive a unique 6-character Student Code immediately\n6. Save your code and begin learning\n\nNo school link or referral code is required for independent students.`
     },
     {
       pattern: /\bforgot\b.*code|lost.*code|recover.*code|find.*code|code.*lost|can.*t.*log.*in|cannot.*log/i,
@@ -509,7 +509,7 @@ app.post("/api/support/chat", async (req, res) => {
 Respond in professional, clear English only. Do not use slang, pidgin, or informal phrases.
 
 Key facts:
-- Students can join independently at exam-ple.vercel.app with no school required — tap Join, select New Student, enter a name, get a 6-character code.
+- Students can join independently at exam-ple.xyz with no school required — tap Join, select New Student, enter a name, get a 6-character code.
 - Students can also join via a school link or referral code (optional).
 - Credits: 1 per text question, 2 per voice explanation.
 - Plans: Basic ₦2,500/50 credits, Premium ₦4,500/100 credits, Max ₦6,500/250 credits, Top-up ₦500/10 credits.
