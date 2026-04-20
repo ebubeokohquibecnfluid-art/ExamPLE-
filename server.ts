@@ -476,6 +476,14 @@ app.post("/api/support/chat", async (req, res) => {
       answer: `Schools can register on ExamPLE to get their own branded student portal.\n\nBenefits for schools:\n- A unique school link to share with students (exam-ple.xyz/your-school)\n- A referral code to onboard students\n- A dashboard to monitor student activity\n- 40% of subscription revenue from your students\n\nTo register, tap the Settings icon inside the app and select "Register Your School".`
     },
     {
+      pattern: /\bschool.*dashboard|\bdashboard.*login|\bschool.*log.?in|\blog.?in.*school|\baccess.*dashboard|\bschool.*account\b/i,
+      answer: `To access your school dashboard:\n\n1. Visit exam-ple.xyz\n2. Tap the Settings icon (gear icon) in the top-right corner of the app\n3. Scroll down and tap "School Login"\n4. Enter your school's unique slug (the short name in your school link, e.g. "kings-college" from exam-ple.xyz/kings-college)\n5. Enter your school password (set during registration)\n6. Tap "Login" to access your dashboard\n\nFrom the dashboard, you can view student activity, monitor learning progress, and manage your school account.\n\nIf you have forgotten your password, tap "Forgot Password?" on the school login screen.`
+    },
+    {
+      pattern: /\bforgot.*school.*pass|\bschool.*forgot.*pass|\breset.*school.*pass|\bschool.*pass.*reset|\bschool.*password\b/i,
+      answer: `To reset your school password:\n\n1. Tap the Settings icon in the top-right corner of the app\n2. Scroll to "School Login" and tap it\n3. Tap "Forgot Password?" below the login form\n4. Enter your school's referral code (provided when you registered)\n5. Enter and confirm your new password\n6. Tap "Reset Password"\n\nYour referral code was shared with you when your school was first registered. If you have lost it, please contact ExamPLE support for assistance.`
+    },
+    {
       pattern: /\bjoin\b|\bsign.?up\b|\bget started\b|\bcreate.*(account|profile)\b/i,
       answer: `There are two ways to join ExamPLE:\n\n**Option 1 — Via your school:**\nIf your school uses ExamPLE, your school administrator will share a unique link (e.g. exam-ple.xyz/your-school-name). Visit that link and tap "Join" to be automatically connected to your school. Alternatively, open the Settings section inside the app and enter the referral code your school provided.\n\n**Option 2 — As an independent student:**\nYou do not need a school to use ExamPLE. Simply:\n1. Visit exam-ple.xyz\n2. Tap the green "Join" button at the top-right\n3. Select "New Student"\n4. Enter your name\n5. You will receive a unique 6-character Student Code immediately\n6. Save your code and begin learning\n\nNo school link or referral code is required for independent students.`
     },
