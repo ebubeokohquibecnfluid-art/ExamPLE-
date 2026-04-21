@@ -55,18 +55,32 @@ const PLAN_UNITS = { 'Basic': 50, 'Premium': 100, 'Max': 250, 'Top-up': 10 };
 const getUserCredits = async (userId) => {
   if (!db) return 0;
   try {
-    const user = await db.get("SELECT credits, expiry_date FROM users WHERE uid = ?", [userId]);
+    const user = await db.get("SELECT credits, expiry_date, trial_expires_at FROM users WHERE uid = ?", [userId]);
     if (!user) return 0;
-    
-    // Check for expiration
+
+    const now = new Date();
+
+    // Check paid subscription expiry
     if (user.expiry_date) {
-      const expiry = new Date(user.expiry_date);
-      if (expiry < new Date()) {
+      const subExpiry = new Date(user.expiry_date);
+      if (subExpiry < now) {
         await db.run("UPDATE users SET credits = 0, expiry_date = NULL WHERE uid = ?", [userId]);
         return 0;
       }
+      // Active subscription — return credits normally
+      return user.credits;
     }
-    
+
+    // No paid subscription — check 48-hour free trial window
+    if (user.trial_expires_at) {
+      const trialExpiry = new Date(user.trial_expires_at);
+      if (trialExpiry < now) {
+        // Trial window has closed — zero out any remaining free credits
+        if (user.credits > 0) await db.run("UPDATE users SET credits = 0 WHERE uid = ?", [userId]);
+        return 0;
+      }
+    }
+
     return user.credits;
   } catch (e) { return 0; }
 };
@@ -87,7 +101,8 @@ app.post("/api/auth/simple", async (req, res) => {
         return res.status(429).json({ error: "IP_LIMIT", message: "An account already exists from this network. Please use your existing Student Code to log in." });
       }
 
-      await db.run("INSERT INTO users (uid, credits, displayName, created_ip) VALUES (?, ?, ?, ?)", [uid, 10, displayName || "Student", clientIp]);
+      const trialExpiresAt = new Date(Date.now() + 48 * 60 * 60 * 1000).toISOString();
+      await db.run("INSERT INTO users (uid, credits, displayName, created_ip, trial_expires_at) VALUES (?, ?, ?, ?, ?)", [uid, 10, displayName || "Student", clientIp, trialExpiresAt]);
     } else if (displayName && !user.displayName) {
       await db.run("UPDATE users SET displayName = ? WHERE uid = ?", [displayName, uid]);
     }
