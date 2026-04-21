@@ -224,8 +224,11 @@ app.post("/ask-question", async (req, res) => {
     res.setHeader('Connection', 'keep-alive');
 
     const stream = await ai.models.generateContentStream({
-      model: "gemini-2.0-flash",
-      config: { systemInstruction },
+      model: "gemini-2.5-flash",
+      config: {
+        systemInstruction,
+        thinkingConfig: { thinkingBudget: 0 }, // Disable thinking — stream pure text immediately
+      },
       contents: [{ role: "user", parts }],
     });
 
