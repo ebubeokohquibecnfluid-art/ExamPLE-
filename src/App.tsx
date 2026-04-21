@@ -1033,6 +1033,20 @@ function MainApp({ user, profile, onLogin, onLogout, refreshProfile, showToast, 
 
   const userId = user?.uid || "guest";
   const credits = profile?.credits || 0;
+
+  const trialExpired = (() => {
+    if (!profile || !user) return false;
+    const subExpiry = profile.expiry_date ? new Date(profile.expiry_date) : null;
+    if (subExpiry && subExpiry > new Date()) return false;
+    const trialExpiry = (profile as any).trial_expires_at ? new Date((profile as any).trial_expires_at) : null;
+    if (!trialExpiry) return false;
+    return trialExpiry < new Date();
+  })();
+
+  useEffect(() => {
+    if (trialExpired && user) setShowTopUp(true);
+  }, [trialExpired, user]);
+
   const chatEndRef = useRef<HTMLDivElement>(null);
 
   const createWavBlob = (pcmData: Int16Array, sampleRate: number) => {
@@ -1155,7 +1169,7 @@ function MainApp({ user, profile, onLogin, onLogout, refreshProfile, showToast, 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!question.trim() && !imageBase64) return;
-    if (credits < 1) {
+    if (credits < 1 || trialExpired) {
       setShowTopUp(true);
       return;
     }
@@ -1753,16 +1767,24 @@ function MainApp({ user, profile, onLogin, onLogout, refreshProfile, showToast, 
               exit={{ opacity: 0, scale: 0.9 }}
               className="bg-white rounded-[40px] p-8 max-w-md w-full shadow-2xl relative"
             >
-              <button onClick={() => setShowTopUp(false)} className="absolute top-6 right-6 p-2 hover:bg-slate-100 rounded-full">
-                <X className="w-6 h-6 text-slate-400" />
-              </button>
+              {!trialExpired && (
+                <button onClick={() => setShowTopUp(false)} className="absolute top-6 right-6 p-2 hover:bg-slate-100 rounded-full">
+                  <X className="w-6 h-6 text-slate-400" />
+                </button>
+              )}
               
               <div className="text-center mb-8">
-                <div className="bg-yellow-100 w-16 h-16 rounded-3xl flex items-center justify-center mx-auto mb-4">
-                  <Sparkles className="w-8 h-8 text-yellow-600" />
+                <div className={`${trialExpired ? 'bg-red-100' : 'bg-yellow-100'} w-16 h-16 rounded-3xl flex items-center justify-center mx-auto mb-4`}>
+                  <Sparkles className={`w-8 h-8 ${trialExpired ? 'text-red-500' : 'text-yellow-600'}`} />
                 </div>
-                <h2 className="text-2xl font-black text-slate-900">Buy Credits</h2>
-                <p className="text-sm text-slate-500">Choose a plan to continue learning</p>
+                <h2 className="text-2xl font-black text-slate-900">
+                  {trialExpired ? 'Subscribe to Continue' : 'Buy Credits'}
+                </h2>
+                <p className="text-sm text-slate-500 mt-1">
+                  {trialExpired
+                    ? 'Your 48-hour free trial has ended. Choose a plan to keep learning.'
+                    : 'Choose a plan to continue learning'}
+                </p>
               </div>
 
               <div className="space-y-3">
