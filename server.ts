@@ -79,9 +79,16 @@ app.post("/api/auth/simple", async (req, res) => {
     const user = await db.get("SELECT * FROM users WHERE uid = ?", [uid]);
     if (!user) {
       if (returnOnly) return res.status(404).json({ error: "User not found" });
-      await db.run("INSERT INTO users (uid, credits, displayName) VALUES (?, ?, ?)", [uid, 10, displayName || "Student"]);
+
+      // IP abuse check — only for new independent students (no school link yet)
+      const clientIp = (req.headers['x-forwarded-for'] as string)?.split(',')[0]?.trim() || req.socket?.remoteAddress || 'unknown';
+      const existingFromIp = await db.get("SELECT uid FROM users WHERE created_ip = ? AND schoolid IS NULL", [clientIp]);
+      if (existingFromIp && clientIp !== 'unknown') {
+        return res.status(429).json({ error: "IP_LIMIT", message: "An account already exists from this network. Please use your existing Student Code to log in." });
+      }
+
+      await db.run("INSERT INTO users (uid, credits, displayName, created_ip) VALUES (?, ?, ?, ?)", [uid, 10, displayName || "Student", clientIp]);
     } else if (displayName && !user.displayName) {
-      // Update name if missing
       await db.run("UPDATE users SET displayName = ? WHERE uid = ?", [displayName, uid]);
     }
     res.json(await db.get("SELECT * FROM users WHERE uid = ?", [uid]));
