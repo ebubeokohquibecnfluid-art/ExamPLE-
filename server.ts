@@ -349,7 +349,7 @@ app.post("/get-audio", async (req, res) => {
 // ── EXAM MODE ──────────────────────────────────────────────────────────────
 
 app.post("/api/exam/start", async (req, res) => {
-  const { user_id, subject, level, exam_type, num_questions, time_minutes } = req.body;
+  const { user_id, subject, level, exam_type, num_questions, time_minutes, year, mode } = req.body;
   if (!user_id || !subject || !db) return res.status(400).json({ error: "Missing data" });
   const n = Math.min(Math.max(Number(num_questions) || 10, 5), 30);
   const cost = n; // 1 credit per question
@@ -357,7 +357,17 @@ app.post("/api/exam/start", async (req, res) => {
     const credits = await getUserCredits(user_id);
     if (credits < cost) return res.status(403).json({ error: "Not enough credits", required: cost });
 
-    const prompt = `Generate exactly ${n} multiple-choice ${exam_type || 'WAEC'} past-question-style questions on "${subject}" for Nigerian ${level || 'Secondary'} school students.
+    const examLabel = `${exam_type || 'WAEC'} ${subject}`;
+    const levelLabel = level || 'Secondary';
+
+    let contextLine = `for Nigerian ${levelLabel} school students`;
+    if (year && mode === 'simulate') {
+      contextLine = `replicating the style, difficulty, and topic distribution of the actual ${year} ${examLabel} paper. Draw on the known content areas examined that year. Make questions feel authentic to that specific paper`;
+    } else if (year && mode === 'similar') {
+      contextLine = `in the style of ${year} ${examLabel} past questions. Use similar question patterns, phrasing, and difficulty level to questions from that era`;
+    }
+
+    const prompt = `Generate exactly ${n} multiple-choice questions ${contextLine}.
 
 Return ONLY valid JSON (no markdown, no extra text) in this exact format:
 {
@@ -374,12 +384,12 @@ Return ONLY valid JSON (no markdown, no extra text) in this exact format:
 }
 
 Rules:
-- Questions must be actual exam-standard difficulty
+- Questions must be actual ${exam_type || 'WAEC'}-standard difficulty for ${subject}
 - Each question must have exactly 4 options labeled A, B, C, D
 - "ans" must be exactly one of: A, B, C, or D
-- "scheme" must show the marking breakdown as WAEC markers would write it
+- "scheme" must show the marking breakdown as ${exam_type || 'WAEC'} markers would write it
 - "mistakes" must list 2-3 specific reasons a student might get this wrong
-- "topic" should be a short topic name (e.g. "Mole Concept", "Quadratic Equations")
+- "topic" should be a short topic name (e.g. "Mole Concept", "Genetics")
 - Return ONLY the JSON object, nothing else`;
 
     const response = await ai.models.generateContent({

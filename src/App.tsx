@@ -998,6 +998,9 @@ function MainApp({ user, profile, onLogin, onLogout, refreshProfile, showToast, 
   const [examLoading, setExamLoading] = useState(false);
   const [progressLoading, setProgressLoading] = useState(false);
   const [expandedResult, setExpandedResult] = useState<number | null>(null);
+  const [examSubMode, setExamSubMode] = useState<'practice' | 'pastq'>('practice');
+  const [pastqYear, setPastqYear] = useState(2023);
+  const [pastqMode, setPastqMode] = useState<'similar' | 'simulate'>('simulate');
 
   const startRecording = async () => {
     try {
@@ -1497,17 +1500,23 @@ function MainApp({ user, profile, onLogin, onLogout, refreshProfile, showToast, 
   };
 
   // ── EXAM HANDLERS ──
-  const startExam = async () => {
+  const startExam = async (forceMode?: 'similar' | 'simulate') => {
     if (!user) { onLogin(); return; }
     if (!examConfig.subject.trim()) { showToast("Please enter a subject", "error"); return; }
     const cost = examConfig.numQuestions;
     if (credits < cost) { setShowTopUp(true); return; }
     setExamLoading(true);
+    const resolvedMode = forceMode ?? pastqMode;
     try {
       const res = await fetch(`${API_BASE_URL}/api/exam/start`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ user_id: userId, subject: examConfig.subject, level, exam_type: examConfig.examType, num_questions: examConfig.numQuestions, time_minutes: examConfig.timeMinutes }),
+        body: JSON.stringify({
+          user_id: userId, subject: examConfig.subject, level,
+          exam_type: examConfig.examType, num_questions: examConfig.numQuestions,
+          time_minutes: examConfig.timeMinutes,
+          ...(examSubMode === 'pastq' ? { year: pastqYear, mode: resolvedMode } : {}),
+        }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Failed to generate exam');
@@ -1878,80 +1887,124 @@ function MainApp({ user, profile, onLogin, onLogout, refreshProfile, showToast, 
       {activeView === 'exam' && (
         <div className="flex-1 overflow-y-auto">
           {examPhase === 'setup' && (
-            <div className="p-5 max-w-md mx-auto">
-              <div className="bg-white rounded-3xl p-6 shadow-sm border border-slate-200 mb-4">
-                <div className="flex items-center gap-3 mb-5">
-                  <div className="bg-nigeria-green w-12 h-12 rounded-2xl flex items-center justify-center">
-                    <Trophy className="w-6 h-6 text-white" />
+            <div className="p-4 max-w-md mx-auto">
+              {/* Sub-mode switcher */}
+              <div className="bg-white rounded-2xl p-1 border border-slate-200 flex mb-4 shadow-sm">
+                <button onClick={() => setExamSubMode('practice')}
+                  className={cn("flex-1 py-2.5 rounded-xl text-xs font-black transition-all flex items-center justify-center gap-1.5",
+                    examSubMode === 'practice' ? "bg-nigeria-green text-white shadow-sm" : "text-slate-400 hover:text-slate-600"
+                  )}
+                ><Trophy className="w-3.5 h-3.5" /> Practice Test</button>
+                <button onClick={() => setExamSubMode('pastq')}
+                  className={cn("flex-1 py-2.5 rounded-xl text-xs font-black transition-all flex items-center justify-center gap-1.5",
+                    examSubMode === 'pastq' ? "bg-nigeria-green text-white shadow-sm" : "text-slate-400 hover:text-slate-600"
+                  )}
+                ><BookOpen className="w-3.5 h-3.5" /> Past Questions</button>
+              </div>
+
+              {/* Shared config fields */}
+              <div className="bg-white rounded-3xl p-5 shadow-sm border border-slate-200 mb-3 space-y-4">
+
+                {examSubMode === 'pastq' && (
+                  <div className="bg-blue-50 border border-blue-200 rounded-2xl px-4 py-3">
+                    <p className="text-xs font-black text-blue-700 mb-0.5">Past Question Bank</p>
+                    <p className="text-[11px] text-blue-600">AI simulates real past paper style and content for your chosen year</p>
                   </div>
-                  <div>
-                    <h2 className="text-lg font-black text-slate-900">Start Practice Exam</h2>
-                    <p className="text-xs text-slate-500">AI-generated exam questions with marking scheme</p>
+                )}
+
+                <div>
+                  <label className="text-xs font-bold text-slate-600 uppercase tracking-wider block mb-1.5">Subject *</label>
+                  <input
+                    type="text" placeholder="e.g. Biology, Chemistry, Mathematics..."
+                    value={examConfig.subject}
+                    onChange={e => setExamConfig(c => ({ ...c, subject: e.target.value }))}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-4 py-3 text-sm font-medium focus:outline-none focus:border-nigeria-green transition-all"
+                  />
+                </div>
+
+                <div>
+                  <label className="text-xs font-bold text-slate-600 uppercase tracking-wider block mb-1.5">Exam Type</label>
+                  <div className="grid grid-cols-3 gap-2">
+                    {['WAEC','NECO','JAMB'].map(t => (
+                      <button key={t} onClick={() => setExamConfig(c => ({ ...c, examType: t }))}
+                        className={cn("py-2.5 rounded-2xl text-sm font-black transition-all border", examConfig.examType === t ? "bg-nigeria-green text-white border-nigeria-green" : "bg-slate-50 text-slate-600 border-slate-200 hover:border-nigeria-green")}
+                      >{t}</button>
+                    ))}
                   </div>
                 </div>
 
-                <div className="space-y-4">
+                {/* Past Questions: Year picker */}
+                {examSubMode === 'pastq' && (
                   <div>
-                    <label className="text-xs font-bold text-slate-600 uppercase tracking-wider block mb-1.5">Subject *</label>
-                    <input
-                      type="text" placeholder="e.g. Chemistry, Mathematics, English..."
-                      value={examConfig.subject}
-                      onChange={e => setExamConfig(c => ({ ...c, subject: e.target.value }))}
-                      className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-4 py-3 text-sm font-medium focus:outline-none focus:border-nigeria-green transition-all"
-                    />
+                    <label className="text-xs font-bold text-slate-600 uppercase tracking-wider block mb-1.5">Year</label>
+                    <div className="grid grid-cols-5 gap-1.5">
+                      {[2024,2023,2022,2021,2020,2019,2018,2017,2016,2015].map(y => (
+                        <button key={y} onClick={() => setPastqYear(y)}
+                          className={cn("py-2 rounded-xl text-xs font-black transition-all border", pastqYear === y ? "bg-nigeria-green text-white border-nigeria-green" : "bg-slate-50 text-slate-600 border-slate-200 hover:border-nigeria-green")}
+                        >{y}</button>
+                      ))}
+                    </div>
                   </div>
+                )}
 
+                <div className="grid grid-cols-2 gap-3">
                   <div>
-                    <label className="text-xs font-bold text-slate-600 uppercase tracking-wider block mb-1.5">Exam Type</label>
-                    <div className="grid grid-cols-3 gap-2">
-                      {['WAEC','NECO','JAMB'].map(t => (
-                        <button key={t} onClick={() => setExamConfig(c => ({ ...c, examType: t }))}
-                          className={cn("py-2.5 rounded-2xl text-sm font-black transition-all border", examConfig.examType === t ? "bg-nigeria-green text-white border-nigeria-green" : "bg-slate-50 text-slate-600 border-slate-200 hover:border-nigeria-green")}
+                    <label className="text-xs font-bold text-slate-600 uppercase tracking-wider block mb-1.5">Questions</label>
+                    <div className="grid grid-cols-3 gap-1.5">
+                      {[10,20,30].map(n => (
+                        <button key={n} onClick={() => setExamConfig(c => ({ ...c, numQuestions: n }))}
+                          className={cn("py-2 rounded-xl text-sm font-black transition-all border", examConfig.numQuestions === n ? "bg-nigeria-green text-white border-nigeria-green" : "bg-slate-50 text-slate-600 border-slate-200")}
+                        >{n}</button>
+                      ))}
+                    </div>
+                  </div>
+                  <div>
+                    <label className="text-xs font-bold text-slate-600 uppercase tracking-wider block mb-1.5">Time (mins)</label>
+                    <div className="grid grid-cols-3 gap-1.5">
+                      {[15,30,45].map(t => (
+                        <button key={t} onClick={() => setExamConfig(c => ({ ...c, timeMinutes: t }))}
+                          className={cn("py-2 rounded-xl text-sm font-black transition-all border", examConfig.timeMinutes === t ? "bg-nigeria-green text-white border-nigeria-green" : "bg-slate-50 text-slate-600 border-slate-200")}
                         >{t}</button>
                       ))}
                     </div>
                   </div>
-
-                  <div className="grid grid-cols-2 gap-3">
-                    <div>
-                      <label className="text-xs font-bold text-slate-600 uppercase tracking-wider block mb-1.5">Questions</label>
-                      <div className="grid grid-cols-3 gap-1.5">
-                        {[10,20,30].map(n => (
-                          <button key={n} onClick={() => setExamConfig(c => ({ ...c, numQuestions: n }))}
-                            className={cn("py-2 rounded-xl text-sm font-black transition-all border", examConfig.numQuestions === n ? "bg-nigeria-green text-white border-nigeria-green" : "bg-slate-50 text-slate-600 border-slate-200")}
-                          >{n}</button>
-                        ))}
-                      </div>
-                    </div>
-                    <div>
-                      <label className="text-xs font-bold text-slate-600 uppercase tracking-wider block mb-1.5">Time (mins)</label>
-                      <div className="grid grid-cols-3 gap-1.5">
-                        {[15,30,45].map(t => (
-                          <button key={t} onClick={() => setExamConfig(c => ({ ...c, timeMinutes: t }))}
-                            className={cn("py-2 rounded-xl text-sm font-black transition-all border", examConfig.timeMinutes === t ? "bg-nigeria-green text-white border-nigeria-green" : "bg-slate-50 text-slate-600 border-slate-200")}
-                          >{t}</button>
-                        ))}
-                      </div>
-                    </div>
-                  </div>
                 </div>
               </div>
 
-              <div className="bg-amber-50 border border-amber-200 rounded-2xl p-3 mb-4 flex items-start gap-2">
+              <div className="bg-amber-50 border border-amber-200 rounded-2xl p-3 mb-3 flex items-start gap-2">
                 <Sparkles className="w-4 h-4 text-amber-500 shrink-0 mt-0.5" />
                 <p className="text-xs text-amber-700 font-medium">
-                  This exam costs <span className="font-black">{examConfig.numQuestions} credits</span>. You have <span className="font-black">{credits}</span> credits.
-                  Each question is {examConfig.examType}-style with a full marking scheme.
+                  Costs <span className="font-black">{examConfig.numQuestions} credits</span> · You have <span className="font-black">{credits}</span> · Full WAEC marking scheme included
                 </p>
               </div>
 
-              <button onClick={startExam} disabled={examLoading || !examConfig.subject.trim()}
-                className={cn("w-full py-4 rounded-2xl font-black text-base transition-all flex items-center justify-center gap-2",
-                  examLoading || !examConfig.subject.trim() ? "bg-slate-200 text-slate-400" : "bg-nigeria-green text-white shadow-lg hover:bg-green-700 active:scale-95"
-                )}
-              >
-                {examLoading ? <><Loader2 className="w-5 h-5 animate-spin" />Generating questions…</> : <><Trophy className="w-5 h-5" />Start Exam</>}
-              </button>
+              {/* Action buttons */}
+              {examSubMode === 'practice' ? (
+                <button onClick={() => startExam()} disabled={examLoading || !examConfig.subject.trim()}
+                  className={cn("w-full py-4 rounded-2xl font-black text-base transition-all flex items-center justify-center gap-2",
+                    examLoading || !examConfig.subject.trim() ? "bg-slate-200 text-slate-400" : "bg-nigeria-green text-white shadow-lg hover:bg-green-700 active:scale-95"
+                  )}
+                >
+                  {examLoading ? <><Loader2 className="w-5 h-5 animate-spin" />Generating…</> : <><Trophy className="w-5 h-5" />Start Practice Exam</>}
+                </button>
+              ) : (
+                <div className="space-y-2">
+                  <button onClick={() => startExam('simulate')} disabled={examLoading || !examConfig.subject.trim()}
+                    className={cn("w-full py-4 rounded-2xl font-black text-sm transition-all flex items-center justify-center gap-2",
+                      examLoading || !examConfig.subject.trim() ? "bg-slate-200 text-slate-400" : "bg-nigeria-green text-white shadow-lg hover:bg-green-700 active:scale-95"
+                    )}
+                  >
+                    {examLoading ? <><Loader2 className="w-5 h-5 animate-spin" />Generating…</> : <>📄 Simulate {pastqYear} Past Paper</>}
+                  </button>
+                  <button onClick={() => startExam('similar')} disabled={examLoading || !examConfig.subject.trim()}
+                    className={cn("w-full py-4 rounded-2xl font-black text-sm transition-all flex items-center justify-center gap-2 border-2",
+                      examLoading || !examConfig.subject.trim() ? "border-slate-200 text-slate-400" : "border-nigeria-green text-nigeria-green bg-green-50 hover:bg-green-100 active:scale-95"
+                    )}
+                  >
+                    ✨ Generate Similar Questions
+                  </button>
+                </div>
+              )}
             </div>
           )}
 
