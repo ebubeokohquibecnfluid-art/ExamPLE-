@@ -196,21 +196,66 @@ app.get("/payment-success", async (req, res) => {
 });
 
 app.post("/ask-question", async (req, res) => {
-  const { user_id, questionText, isVoice } = req.body;
+  const { user_id, questionText, level, subject, usePidgin, imageBase64, isVoice } = req.body;
   const cost = isVoice ? 2 : 1;
   try {
     const credits = await getUserCredits(user_id);
     if (credits < cost) return res.status(403).json({ error: "Not enough credits" });
+
+    const levelLabel = level || "Secondary";
+    const subjectLabel = subject || "General";
+    const tone = usePidgin
+      ? "Respond in Nigerian Pidgin English, friendly and encouraging."
+      : "Respond in clear, friendly English suitable for Nigerian students.";
+
+    const systemInstruction = `You are ExamPLE AI, a warm and expert Nigerian tutor specialising in ${subjectLabel} for ${levelLabel} level (Nigerian curriculum: WAEC, NECO, JAMB, Common Entrance). ${tone} Always give step-by-step explanations. Use Nigerian examples where helpful. Format answers with markdown (bold, bullet points, numbered steps).`;
+
+    const parts: any[] = [];
+    if (imageBase64) {
+      const mimeMatch = imageBase64.match(/^data:([^;]+);base64,/);
+      const mimeType = mimeMatch ? mimeMatch[1] : 'image/jpeg';
+      const base64Data = imageBase64.replace(/^data:[^;]+;base64,/, '');
+      parts.push({ inlineData: { mimeType, data: base64Data } });
+    }
+    parts.push({ text: questionText || "Explain this image in detail." });
+
     res.setHeader('Content-Type', 'text/event-stream');
+    res.setHeader('Cache-Control', 'no-cache');
+    res.setHeader('Connection', 'keep-alive');
+
     const stream = await ai.models.generateContentStream({
-      model: "gemini-2.5-flash",
-      contents: [{ role: "user", parts: [{ text: questionText }] }],
+      model: "gemini-2.0-flash",
+      config: { systemInstruction },
+      contents: [{ role: "user", parts }],
     });
-    for await (const chunk of stream) { if (chunk.text) res.write(`data: ${JSON.stringify({ text: chunk.text })}\n\n`); }
+
+    let totalText = "";
+    for await (const chunk of stream) {
+      // Extract text from all non-thought parts explicitly
+      const parts = chunk.candidates?.[0]?.content?.parts ?? [];
+      for (const part of parts) {
+        if (part.thought) continue; // skip thinking tokens
+        const txt = part.text ?? "";
+        if (txt) {
+          totalText += txt;
+          res.write(`data: ${JSON.stringify({ text: txt })}\n\n`);
+        }
+      }
+      // Fallback: chunk.text shorthand (works when thinking is off)
+      if (!chunk.candidates && (chunk as any).text) {
+        const txt = (chunk as any).text;
+        totalText += txt;
+        res.write(`data: ${JSON.stringify({ text: txt })}\n\n`);
+      }
+    }
+
     if (db) await db.run("UPDATE users SET credits = MAX(0, credits - ?) WHERE uid = ?", [cost, user_id]);
     res.write(`data: [DONE]\n\n`);
     res.end();
-  } catch (e) { res.end(); }
+  } catch (e: any) {
+    console.error("ask-question error:", e?.message || e);
+    try { res.write(`data: ${JSON.stringify({ error: "AI unavailable", debug: e?.message })}\n\n`); res.end(); } catch {}
+  }
 });
 
 app.post("/register-school", async (req, res) => {
