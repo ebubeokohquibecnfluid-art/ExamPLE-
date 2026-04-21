@@ -1249,7 +1249,9 @@ function MainApp({ user, profile, onLogin, onLogout, refreshProfile, showToast, 
               if (data.text) {
                 fullContent += data.text;
                 // Clean up unnecessary $ signs around single variables or simple formulas
-                const cleanedContent = fullContent.replace(/\$([a-zA-Z0-9\s=\+\-\*\/]+)\$/g, '$1');
+                const cleanedContent = fullContent
+                  .replace(/\$\$([^$]+)\$\$/g, '$1')   // strip $$...$$ display math
+                  .replace(/\$([^$\n]{1,200})\$/g, '$1'); // strip $...$ inline math
                 setMessages(prev => prev.map(m => 
                   m.id === assistantMsgId ? { ...m, content: cleanedContent } : m
                 ));
