@@ -2197,6 +2197,19 @@ export default function App() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ uid, displayName })
       });
+      if (res.status === 429) {
+        // IP limit hit — undo the local account creation and guide them to log in
+        localStorage.removeItem('temp_user');
+        localStorage.removeItem('exam_uid');
+        localStorage.removeItem('exam_user');
+        setUser(null);
+        setProfile(null);
+        setShowCodeModal(false);
+        setLoginStep('return');
+        setShowLoginModal(true);
+        showToast("An account already exists from your network. Please log in with your Student Code.", "error");
+        return;
+      }
       if (res.ok) {
         const data = await res.json();
         setProfile(data);
