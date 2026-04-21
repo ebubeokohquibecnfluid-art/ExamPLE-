@@ -261,7 +261,7 @@ CRITICAL RULES — follow every one, every time:
       }
     }
 
-    if (db) await db.run("UPDATE users SET credits = MAX(0, credits - ?) WHERE uid = ?", [cost, user_id]);
+    if (db) await db.run("UPDATE users SET credits = GREATEST(0, credits - ?) WHERE uid = ?", [cost, user_id]);
     res.write(`data: [DONE]\n\n`);
     res.end();
   } catch (e: any) {
@@ -293,11 +293,11 @@ app.post("/register-school", async (req, res) => {
 app.post("/get-audio", async (req, res) => {
   const { text, user_id } = req.body;
   try {
-    // Deduct 1 unit for audio explanation if user_id is provided
+    // Deduct 2 units for audio explanation if user_id is provided
     if (user_id && db) {
       const credits = await getUserCredits(user_id);
-      if (credits < 1) return res.status(403).json({ error: "Not enough credits for audio" });
-      await db.run("UPDATE users SET credits = MAX(0, credits - 1) WHERE uid = ?", [user_id]);
+      if (credits < 2) return res.status(403).json({ error: "Not enough credits for audio" });
+      await db.run("UPDATE users SET credits = GREATEST(0, credits - 2) WHERE uid = ?", [user_id]);
     }
     
     try {
