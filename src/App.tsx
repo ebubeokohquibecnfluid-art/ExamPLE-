@@ -58,6 +58,8 @@ interface UserProfile {
   credits: number;
   schoolId?: string;
   role?: 'admin' | 'user';
+  expiry_date?: string;
+  trial_expires_at?: string;
 }
 
 // --- API CONFIGURATION ---
