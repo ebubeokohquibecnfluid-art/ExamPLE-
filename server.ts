@@ -346,6 +346,159 @@ app.post("/get-audio", async (req, res) => {
   }
 });
 
+// ── EXAM MODE ──────────────────────────────────────────────────────────────
+
+app.post("/api/exam/start", async (req, res) => {
+  const { user_id, subject, level, exam_type, num_questions, time_minutes } = req.body;
+  if (!user_id || !subject || !db) return res.status(400).json({ error: "Missing data" });
+  const n = Math.min(Math.max(Number(num_questions) || 10, 5), 30);
+  const cost = n; // 1 credit per question
+  try {
+    const credits = await getUserCredits(user_id);
+    if (credits < cost) return res.status(403).json({ error: "Not enough credits", required: cost });
+
+    const prompt = `Generate exactly ${n} multiple-choice ${exam_type || 'WAEC'} past-question-style questions on "${subject}" for Nigerian ${level || 'Secondary'} school students.
+
+Return ONLY valid JSON (no markdown, no extra text) in this exact format:
+{
+  "questions": [
+    {
+      "q": "Full question text here",
+      "opts": ["A. option one", "B. option two", "C. option three", "D. option four"],
+      "ans": "A",
+      "scheme": "Step 1: [what to do] (1 mark)\\nStep 2: [next step] (1 mark)\\nStep 3: [final answer] (2 marks)",
+      "topic": "Short topic name",
+      "mistakes": ["Common mistake 1", "Common mistake 2"]
+    }
+  ]
+}
+
+Rules:
+- Questions must be actual exam-standard difficulty
+- Each question must have exactly 4 options labeled A, B, C, D
+- "ans" must be exactly one of: A, B, C, or D
+- "scheme" must show the marking breakdown as WAEC markers would write it
+- "mistakes" must list 2-3 specific reasons a student might get this wrong
+- "topic" should be a short topic name (e.g. "Mole Concept", "Quadratic Equations")
+- Return ONLY the JSON object, nothing else`;
+
+    const response = await ai.models.generateContent({
+      model: "gemini-2.5-flash",
+      config: { thinkingConfig: { thinkingBudget: 0 } },
+      contents: [{ role: "user", parts: [{ text: prompt }] }],
+    });
+
+    const raw = response.candidates?.[0]?.content?.parts?.[0]?.text ?? "";
+    const jsonMatch = raw.match(/\{[\s\S]*\}/);
+    if (!jsonMatch) return res.status(500).json({ error: "AI failed to generate questions" });
+
+    const parsed = JSON.parse(jsonMatch[0]);
+    const questions = parsed.questions?.slice(0, n);
+    if (!questions?.length) return res.status(500).json({ error: "No questions returned" });
+
+    const session_id = `exam_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+    await db.run(
+      "INSERT INTO exam_sessions (id, user_id, subject, level, exam_type, questions, total, status, started_at) VALUES (?, ?, ?, ?, ?, ?, ?, 'active', ?)",
+      [session_id, user_id, subject, level || 'Secondary', exam_type || 'WAEC', JSON.stringify(questions), questions.length, new Date().toISOString()]
+    );
+    await db.run("UPDATE users SET credits = GREATEST(0, credits - ?) WHERE uid = ?", [cost, user_id]);
+
+    // Return questions WITHOUT answers/scheme/mistakes (those stay server-side)
+    res.json({
+      session_id,
+      subject, level, exam_type, time_minutes,
+      questions: questions.map(({ q, opts }: any) => ({ q, opts })),
+      total: questions.length,
+    });
+  } catch (e: any) {
+    console.error("exam/start error:", e?.message);
+    res.status(500).json({ error: "Failed to generate exam", debug: e?.message });
+  }
+});
+
+app.post("/api/exam/submit", async (req, res) => {
+  const { session_id, user_id, answers } = req.body;
+  if (!session_id || !db) return res.status(400).json({ error: "Missing data" });
+  try {
+    const session = await db.get("SELECT * FROM exam_sessions WHERE id = ? AND user_id = ?", [session_id, user_id]);
+    if (!session) return res.status(404).json({ error: "Session not found" });
+    if (session.status === 'completed') return res.status(400).json({ error: "Already submitted" });
+
+    const questions = typeof session.questions === 'string' ? JSON.parse(session.questions) : session.questions;
+    let score = 0;
+    const results = questions.map((q: any, i: number) => {
+      const userAns = answers[i] ?? null;
+      const correct = userAns === q.ans;
+      if (correct) score++;
+      return {
+        q: q.q, opts: q.opts, ans: q.ans, userAns,
+        correct, topic: q.topic,
+        scheme: q.scheme,
+        why_wrong: correct ? null : q.mistakes,
+      };
+    });
+
+    await db.run(
+      "UPDATE exam_sessions SET status='completed', score=?, answers=?, completed_at=? WHERE id=?",
+      [score, JSON.stringify(answers), new Date().toISOString(), session_id]
+    );
+
+    // Log each answer to user_progress
+    for (const r of results) {
+      await db.run(
+        "INSERT INTO user_progress (user_id, subject, is_correct, topic, timestamp) VALUES (?, ?, ?, ?, ?)",
+        [user_id, session.subject, r.correct, r.topic, new Date().toISOString()]
+      );
+    }
+
+    res.json({ score, total: questions.length, subject: session.subject, results });
+  } catch (e: any) {
+    console.error("exam/submit error:", e?.message);
+    res.status(500).json({ error: "Failed to submit exam" });
+  }
+});
+
+app.get("/api/progress/:user_id", async (req, res) => {
+  const { user_id } = req.params;
+  if (!db) return res.json({ subjects: [] });
+  try {
+    const rows = await db.all(
+      `SELECT subject,
+              COUNT(*) AS total,
+              SUM(CASE WHEN is_correct THEN 1 ELSE 0 END) AS correct
+       FROM user_progress WHERE user_id = ?
+       GROUP BY subject ORDER BY total DESC`,
+      [user_id]
+    );
+    const subjects = rows.map(r => ({
+      subject: r.subject,
+      total: Number(r.total),
+      correct: Number(r.correct),
+      pct: Math.round((Number(r.correct) / Number(r.total)) * 100),
+    }));
+
+    // Weak topics per subject
+    const weakRows = await db.all(
+      `SELECT subject, topic, COUNT(*) AS total,
+              SUM(CASE WHEN is_correct THEN 1 ELSE 0 END) AS correct
+       FROM user_progress WHERE user_id = ? AND topic IS NOT NULL
+       GROUP BY subject, topic HAVING COUNT(*) >= 2
+       ORDER BY (SUM(CASE WHEN is_correct THEN 1 ELSE 0 END)::float / COUNT(*)) ASC
+       LIMIT 5`,
+      [user_id]
+    );
+    const weakTopics = weakRows.map(r => ({
+      subject: r.subject, topic: r.topic,
+      pct: Math.round((Number(r.correct) / Number(r.total)) * 100),
+    }));
+
+    res.json({ subjects, weakTopics });
+  } catch (e: any) {
+    console.error("progress error:", e?.message);
+    res.json({ subjects: [], weakTopics: [] });
+  }
+});
+
 app.post("/api/whatsapp/message", async (req, res) => {
   const { user_id, user_message } = req.body;
   if (!db) return res.status(500).json({ error: "DB missing" });

@@ -68,6 +68,28 @@ async function ensureSchema(): Promise<void> {
       key TEXT PRIMARY KEY,
       value REAL DEFAULT 0
     );
+    CREATE TABLE IF NOT EXISTS exam_sessions (
+      id TEXT PRIMARY KEY,
+      user_id TEXT,
+      subject TEXT,
+      level TEXT,
+      exam_type TEXT,
+      questions JSONB,
+      answers JSONB DEFAULT '{}',
+      score INTEGER,
+      total INTEGER,
+      status TEXT DEFAULT 'active',
+      started_at TEXT,
+      completed_at TEXT
+    );
+    CREATE TABLE IF NOT EXISTS user_progress (
+      id SERIAL PRIMARY KEY,
+      user_id TEXT,
+      subject TEXT,
+      is_correct BOOLEAN,
+      topic TEXT,
+      timestamp TEXT
+    );
   `);
 }
 

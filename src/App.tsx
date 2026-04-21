@@ -36,7 +36,16 @@ import {
   User,
   AlertCircle,
   Mic,
-  MicOff
+  MicOff,
+  Trophy,
+  Clock,
+  BarChart2,
+  CheckCircle,
+  XCircle,
+  RefreshCw,
+  Award,
+  ChevronDown,
+  Flame
 } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import { BrowserRouter, Routes, Route, useParams, useNavigate, Link } from 'react-router-dom';
@@ -975,6 +984,21 @@ function MainApp({ user, profile, onLogin, onLogout, refreshProfile, showToast, 
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
 
+  // ── EXAM & PROGRESS STATE ──
+  const [activeView, setActiveView] = useState<'chat' | 'exam' | 'progress'>('chat');
+  const [examPhase, setExamPhase] = useState<'setup' | 'running' | 'results'>('setup');
+  const [examConfig, setExamConfig] = useState({ subject: '', examType: 'WAEC', numQuestions: 20, timeMinutes: 30 });
+  const [examSession, setExamSession] = useState<any>(null);
+  const [examQuestions, setExamQuestions] = useState<any[]>([]);
+  const [examAnswers, setExamAnswers] = useState<Record<number, string>>({});
+  const [currentQ, setCurrentQ] = useState(0);
+  const [timeLeft, setTimeLeft] = useState(0);
+  const [examResults, setExamResults] = useState<any>(null);
+  const [progressData, setProgressData] = useState<{ subjects: any[], weakTopics: any[] }>({ subjects: [], weakTopics: [] });
+  const [examLoading, setExamLoading] = useState(false);
+  const [progressLoading, setProgressLoading] = useState(false);
+  const [expandedResult, setExpandedResult] = useState<number | null>(null);
+
   const startRecording = async () => {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
@@ -1472,6 +1496,79 @@ function MainApp({ user, profile, onLogin, onLogout, refreshProfile, showToast, 
     }
   };
 
+  // ── EXAM HANDLERS ──
+  const startExam = async () => {
+    if (!user) { onLogin(); return; }
+    if (!examConfig.subject.trim()) { showToast("Please enter a subject", "error"); return; }
+    const cost = examConfig.numQuestions;
+    if (credits < cost) { setShowTopUp(true); return; }
+    setExamLoading(true);
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/exam/start`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ user_id: userId, subject: examConfig.subject, level, exam_type: examConfig.examType, num_questions: examConfig.numQuestions, time_minutes: examConfig.timeMinutes }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed to generate exam');
+      setExamSession(data);
+      setExamQuestions(data.questions);
+      setExamAnswers({});
+      setCurrentQ(0);
+      setTimeLeft(examConfig.timeMinutes * 60);
+      setExamPhase('running');
+      refreshProfile();
+    } catch (e: any) {
+      showToast(e.message || 'Failed to start exam', 'error');
+    } finally {
+      setExamLoading(false);
+    }
+  };
+
+  const handleSubmitExam = async () => {
+    if (!examSession) return;
+    setExamPhase('results'); // prevent double submit
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/exam/submit`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ session_id: examSession.session_id, user_id: userId, answers: examAnswers }),
+      });
+      const data = await res.json();
+      setExamResults(data);
+      setExpandedResult(null);
+    } catch {
+      showToast('Failed to submit exam', 'error');
+    }
+  };
+
+  const fetchProgress = async () => {
+    if (!user) return;
+    setProgressLoading(true);
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/progress/${userId}`);
+      const data = await res.json();
+      setProgressData({ subjects: data.subjects || [], weakTopics: data.weakTopics || [] });
+    } catch { /* silent */ } finally {
+      setProgressLoading(false);
+    }
+  };
+
+  // Exam countdown timer
+  useEffect(() => {
+    if (activeView !== 'exam' || examPhase !== 'running') return;
+    if (timeLeft <= 0) { handleSubmitExam(); return; }
+    const t = setTimeout(() => setTimeLeft(s => s - 1), 1000);
+    return () => clearTimeout(t);
+  }, [activeView, examPhase, timeLeft]);
+
+  // Fetch progress when tab is opened
+  useEffect(() => {
+    if (activeView === 'progress' && user) fetchProgress();
+  }, [activeView, user]);
+
+  const fmtTime = (s: number) => `${String(Math.floor(s / 60)).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`;
+
   return (
     <div className="flex flex-col h-screen bg-[#F0F2F5] font-sans overflow-hidden">
       {/* Header */}
@@ -1517,6 +1614,20 @@ function MainApp({ user, profile, onLogin, onLogout, refreshProfile, showToast, 
         </div>
       </header>
 
+      {/* Tab bar */}
+      <nav className="bg-white border-b border-slate-200 flex z-10 shrink-0">
+        {([['chat','AI Tutor', MessageSquare],['exam','Exam Mode', Trophy],['progress','Progress', BarChart2]] as const).map(([view, label, Icon]) => (
+          <button key={view} onClick={() => setActiveView(view)}
+            className={cn("flex-1 flex flex-col items-center py-2.5 text-[10px] font-bold uppercase tracking-wider transition-all", activeView === view ? "text-nigeria-green border-b-2 border-nigeria-green bg-green-50/50" : "text-slate-400 hover:text-slate-600")}
+          >
+            <Icon className="w-4 h-4 mb-0.5" />
+            {label}
+          </button>
+        ))}
+      </nav>
+
+      {/* ── CHAT VIEW ── */}
+      {activeView === 'chat' && <>
       {/* Chat Area */}
       <main className="flex-1 overflow-y-auto p-4 space-y-4 scrollbar-hide">
         {messages.length === 0 && (
@@ -1760,6 +1871,301 @@ function MainApp({ user, profile, onLogin, onLogout, refreshProfile, showToast, 
           </div>
         </form>
       </div>
+      {/* END CHAT VIEW */}
+      </>}
+
+      {/* ── EXAM VIEW ── */}
+      {activeView === 'exam' && (
+        <div className="flex-1 overflow-y-auto">
+          {examPhase === 'setup' && (
+            <div className="p-5 max-w-md mx-auto">
+              <div className="bg-white rounded-3xl p-6 shadow-sm border border-slate-200 mb-4">
+                <div className="flex items-center gap-3 mb-5">
+                  <div className="bg-nigeria-green w-12 h-12 rounded-2xl flex items-center justify-center">
+                    <Trophy className="w-6 h-6 text-white" />
+                  </div>
+                  <div>
+                    <h2 className="text-lg font-black text-slate-900">Start Practice Exam</h2>
+                    <p className="text-xs text-slate-500">AI-generated exam questions with marking scheme</p>
+                  </div>
+                </div>
+
+                <div className="space-y-4">
+                  <div>
+                    <label className="text-xs font-bold text-slate-600 uppercase tracking-wider block mb-1.5">Subject *</label>
+                    <input
+                      type="text" placeholder="e.g. Chemistry, Mathematics, English..."
+                      value={examConfig.subject}
+                      onChange={e => setExamConfig(c => ({ ...c, subject: e.target.value }))}
+                      className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-4 py-3 text-sm font-medium focus:outline-none focus:border-nigeria-green transition-all"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="text-xs font-bold text-slate-600 uppercase tracking-wider block mb-1.5">Exam Type</label>
+                    <div className="grid grid-cols-3 gap-2">
+                      {['WAEC','NECO','JAMB'].map(t => (
+                        <button key={t} onClick={() => setExamConfig(c => ({ ...c, examType: t }))}
+                          className={cn("py-2.5 rounded-2xl text-sm font-black transition-all border", examConfig.examType === t ? "bg-nigeria-green text-white border-nigeria-green" : "bg-slate-50 text-slate-600 border-slate-200 hover:border-nigeria-green")}
+                        >{t}</button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="text-xs font-bold text-slate-600 uppercase tracking-wider block mb-1.5">Questions</label>
+                      <div className="grid grid-cols-3 gap-1.5">
+                        {[10,20,30].map(n => (
+                          <button key={n} onClick={() => setExamConfig(c => ({ ...c, numQuestions: n }))}
+                            className={cn("py-2 rounded-xl text-sm font-black transition-all border", examConfig.numQuestions === n ? "bg-nigeria-green text-white border-nigeria-green" : "bg-slate-50 text-slate-600 border-slate-200")}
+                          >{n}</button>
+                        ))}
+                      </div>
+                    </div>
+                    <div>
+                      <label className="text-xs font-bold text-slate-600 uppercase tracking-wider block mb-1.5">Time (mins)</label>
+                      <div className="grid grid-cols-3 gap-1.5">
+                        {[15,30,45].map(t => (
+                          <button key={t} onClick={() => setExamConfig(c => ({ ...c, timeMinutes: t }))}
+                            className={cn("py-2 rounded-xl text-sm font-black transition-all border", examConfig.timeMinutes === t ? "bg-nigeria-green text-white border-nigeria-green" : "bg-slate-50 text-slate-600 border-slate-200")}
+                          >{t}</button>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="bg-amber-50 border border-amber-200 rounded-2xl p-3 mb-4 flex items-start gap-2">
+                <Sparkles className="w-4 h-4 text-amber-500 shrink-0 mt-0.5" />
+                <p className="text-xs text-amber-700 font-medium">
+                  This exam costs <span className="font-black">{examConfig.numQuestions} credits</span>. You have <span className="font-black">{credits}</span> credits.
+                  Each question is {examConfig.examType}-style with a full marking scheme.
+                </p>
+              </div>
+
+              <button onClick={startExam} disabled={examLoading || !examConfig.subject.trim()}
+                className={cn("w-full py-4 rounded-2xl font-black text-base transition-all flex items-center justify-center gap-2",
+                  examLoading || !examConfig.subject.trim() ? "bg-slate-200 text-slate-400" : "bg-nigeria-green text-white shadow-lg hover:bg-green-700 active:scale-95"
+                )}
+              >
+                {examLoading ? <><Loader2 className="w-5 h-5 animate-spin" />Generating questions…</> : <><Trophy className="w-5 h-5" />Start Exam</>}
+              </button>
+            </div>
+          )}
+
+          {examPhase === 'running' && examQuestions.length > 0 && (
+            <div className="flex flex-col h-full">
+              {/* Timer bar */}
+              <div className={cn("px-4 py-2 flex items-center justify-between shrink-0", timeLeft < 120 ? "bg-red-500 text-white" : "bg-slate-800 text-white")}>
+                <span className="text-xs font-bold">Q {currentQ + 1}/{examQuestions.length} — {examConfig.subject} {examConfig.examType}</span>
+                <div className="flex items-center gap-1.5">
+                  <Clock className="w-4 h-4" />
+                  <span className="font-black text-sm tabular-nums">{fmtTime(timeLeft)}</span>
+                </div>
+              </div>
+
+              {/* Question */}
+              <div className="flex-1 overflow-y-auto p-4">
+                <div className="bg-white rounded-3xl p-5 shadow-sm border border-slate-200 mb-4">
+                  <p className="text-xs font-bold text-nigeria-green uppercase tracking-wider mb-2">Question {currentQ + 1}</p>
+                  <p className="text-sm font-medium text-slate-800 leading-relaxed">{examQuestions[currentQ]?.q}</p>
+                </div>
+
+                <div className="space-y-2.5">
+                  {examQuestions[currentQ]?.opts?.map((opt: string, i: number) => {
+                    const letter = opt[0];
+                    const selected = examAnswers[currentQ] === letter;
+                    return (
+                      <button key={i} onClick={() => setExamAnswers(a => ({ ...a, [currentQ]: letter }))}
+                        className={cn("w-full text-left p-4 rounded-2xl border-2 font-medium text-sm transition-all",
+                          selected ? "border-nigeria-green bg-green-50 text-nigeria-green font-bold" : "border-slate-200 bg-white text-slate-700 hover:border-nigeria-green/40"
+                        )}
+                      >
+                        {opt}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Navigation */}
+              <div className="bg-white border-t border-slate-200 p-4 shrink-0">
+                {/* Answer dots */}
+                <div className="flex gap-1 flex-wrap justify-center mb-3">
+                  {examQuestions.map((_: any, i: number) => (
+                    <button key={i} onClick={() => setCurrentQ(i)}
+                      className={cn("w-6 h-6 rounded-full text-[9px] font-black transition-all",
+                        i === currentQ ? "bg-nigeria-green text-white scale-110" :
+                        examAnswers[i] ? "bg-green-200 text-green-700" : "bg-slate-200 text-slate-400"
+                      )}
+                    >{i + 1}</button>
+                  ))}
+                </div>
+                <div className="flex gap-2">
+                  <button onClick={() => setCurrentQ(q => Math.max(0, q - 1))} disabled={currentQ === 0}
+                    className="flex-1 py-3 rounded-2xl font-bold text-sm border border-slate-200 text-slate-600 disabled:opacity-30 active:scale-95"
+                  >← Prev</button>
+                  {currentQ < examQuestions.length - 1
+                    ? <button onClick={() => setCurrentQ(q => q + 1)} className="flex-1 py-3 rounded-2xl font-bold text-sm bg-slate-800 text-white active:scale-95">Next →</button>
+                    : <button onClick={handleSubmitExam} className="flex-1 py-3 rounded-2xl font-black text-sm bg-nigeria-green text-white shadow-md active:scale-95">Submit Exam ✓</button>
+                  }
+                </div>
+              </div>
+            </div>
+          )}
+
+          {examPhase === 'results' && examResults && (
+            <div className="p-4 max-w-md mx-auto">
+              {/* Score card */}
+              <div className={cn("rounded-3xl p-6 text-center mb-4 shadow-sm", examResults.score / examResults.total >= 0.5 ? "bg-green-50 border border-green-200" : "bg-red-50 border border-red-200")}>
+                <div className="text-5xl font-black mb-1">
+                  {examResults.score / examResults.total >= 0.7 ? '🏆' : examResults.score / examResults.total >= 0.5 ? '👍' : '📚'}
+                </div>
+                <div className={cn("text-4xl font-black mb-1", examResults.score / examResults.total >= 0.5 ? "text-green-700" : "text-red-600")}>
+                  {examResults.score}/{examResults.total}
+                </div>
+                <p className="text-sm font-bold text-slate-600">{Math.round((examResults.score / examResults.total) * 100)}% — {examResults.subject} {examConfig.examType}</p>
+                <p className="text-xs text-slate-500 mt-1">
+                  {examResults.score / examResults.total >= 0.7 ? "Excellent! You're exam-ready." : examResults.score / examResults.total >= 0.5 ? "Good effort. Review the wrong ones." : "Keep practising — you'll get there!"}
+                </p>
+              </div>
+
+              {/* Per-question results */}
+              <div className="space-y-2 mb-4">
+                {examResults.results?.map((r: any, i: number) => (
+                  <div key={i} className={cn("bg-white rounded-2xl border overflow-hidden", r.correct ? "border-green-200" : "border-red-200")}>
+                    <button onClick={() => setExpandedResult(expandedResult === i ? null : i)}
+                      className="w-full flex items-center gap-3 p-3 text-left"
+                    >
+                      {r.correct
+                        ? <CheckCircle className="w-5 h-5 text-green-500 shrink-0" />
+                        : <XCircle className="w-5 h-5 text-red-500 shrink-0" />
+                      }
+                      <span className="text-xs font-medium text-slate-700 flex-1 line-clamp-2">{i + 1}. {r.q}</span>
+                      <ChevronDown className={cn("w-4 h-4 text-slate-400 shrink-0 transition-transform", expandedResult === i ? "rotate-180" : "")} />
+                    </button>
+                    {expandedResult === i && (
+                      <div className="px-4 pb-4 border-t border-slate-100 pt-3 space-y-3">
+                        <div className="flex gap-2 flex-wrap text-xs">
+                          <span className="bg-green-100 text-green-700 px-2 py-1 rounded-lg font-bold">✓ {r.ans}</span>
+                          {!r.correct && <span className="bg-red-100 text-red-700 px-2 py-1 rounded-lg font-bold">Your answer: {r.userAns ?? 'Skipped'}</span>}
+                        </div>
+                        {r.scheme && (
+                          <div className="bg-blue-50 rounded-xl p-3">
+                            <p className="text-[10px] font-black text-blue-700 uppercase tracking-wider mb-1">WAEC Marking Scheme</p>
+                            <p className="text-xs text-blue-800 whitespace-pre-line leading-relaxed">{r.scheme}</p>
+                          </div>
+                        )}
+                        {!r.correct && r.why_wrong && (
+                          <div className="bg-red-50 rounded-xl p-3">
+                            <p className="text-[10px] font-black text-red-600 uppercase tracking-wider mb-2">Why You Got This Wrong</p>
+                            {r.why_wrong.map((w: string, j: number) => (
+                              <div key={j} className="flex items-start gap-1.5 mb-1">
+                                <XCircle className="w-3 h-3 text-red-500 shrink-0 mt-0.5" />
+                                <span className="text-xs text-red-700 font-medium">{w}</span>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+
+              <button onClick={() => { setExamPhase('setup'); setExamResults(null); setExamSession(null); setExamQuestions([]); }}
+                className="w-full py-4 rounded-2xl bg-nigeria-green text-white font-black text-sm flex items-center justify-center gap-2 shadow-md active:scale-95"
+              >
+                <RefreshCw className="w-4 h-4" /> Try Another Exam
+              </button>
+            </div>
+          )}
+
+          {examPhase === 'results' && !examResults && (
+            <div className="flex-1 flex items-center justify-center">
+              <Loader2 className="w-8 h-8 animate-spin text-nigeria-green" />
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ── PROGRESS VIEW ── */}
+      {activeView === 'progress' && (
+        <div className="flex-1 overflow-y-auto p-4 max-w-md mx-auto w-full">
+          {!user ? (
+            <div className="flex flex-col items-center justify-center h-full text-center py-16">
+              <BarChart2 className="w-16 h-16 text-slate-300 mb-4" />
+              <h3 className="text-lg font-bold text-slate-700 mb-2">Track Your Progress</h3>
+              <p className="text-sm text-slate-500 mb-6">Log in to see your subject performance and weak topics.</p>
+              <button onClick={onLogin} className="bg-nigeria-green text-white px-6 py-3 rounded-2xl font-bold text-sm">Log In</button>
+            </div>
+          ) : progressLoading ? (
+            <div className="flex items-center justify-center h-full">
+              <Loader2 className="w-8 h-8 animate-spin text-nigeria-green" />
+            </div>
+          ) : progressData.subjects.length === 0 ? (
+            <div className="flex flex-col items-center justify-center h-full text-center py-16">
+              <Award className="w-16 h-16 text-slate-300 mb-4" />
+              <h3 className="text-lg font-bold text-slate-700 mb-2">No data yet</h3>
+              <p className="text-sm text-slate-500 mb-6">Complete an exam in Exam Mode to start tracking your progress.</p>
+              <button onClick={() => setActiveView('exam')} className="bg-nigeria-green text-white px-6 py-3 rounded-2xl font-bold text-sm">Take a Practice Exam</button>
+            </div>
+          ) : (
+            <div className="space-y-4 pb-8">
+              <div>
+                <h2 className="text-base font-black text-slate-900 mb-3">
+                  {profile?.displayName?.split(' ')[0] ?? 'Your'}'s Progress
+                </h2>
+                <div className="space-y-3">
+                  {progressData.subjects.map((s: any) => (
+                    <div key={s.subject} className="bg-white rounded-2xl p-4 border border-slate-200 shadow-sm">
+                      <div className="flex items-center justify-between mb-2">
+                        <span className="text-sm font-bold text-slate-800">{s.subject}</span>
+                        <span className={cn("text-sm font-black", s.pct >= 70 ? "text-green-600" : s.pct >= 50 ? "text-yellow-600" : "text-red-500")}>
+                          {s.pct}%
+                        </span>
+                      </div>
+                      <div className="w-full bg-slate-100 rounded-full h-2.5 overflow-hidden">
+                        <div className={cn("h-2.5 rounded-full transition-all", s.pct >= 70 ? "bg-green-500" : s.pct >= 50 ? "bg-yellow-400" : "bg-red-400")}
+                          style={{ width: `${s.pct}%` }} />
+                      </div>
+                      <p className="text-[10px] text-slate-400 mt-1.5">{s.correct}/{s.total} correct</p>
+                      {s.pct < 60 && <p className="text-[10px] text-red-500 font-bold mt-0.5">⚠️ Needs improvement</p>}
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {progressData.weakTopics.length > 0 && (
+                <div>
+                  <h3 className="text-sm font-black text-slate-700 mb-2 flex items-center gap-1.5">
+                    <Flame className="w-4 h-4 text-red-500" /> Weak Topics to Focus On
+                  </h3>
+                  <div className="space-y-2">
+                    {progressData.weakTopics.map((t: any, i: number) => (
+                      <div key={i} className="bg-red-50 border border-red-200 rounded-2xl px-4 py-3 flex items-center justify-between">
+                        <div>
+                          <p className="text-xs font-bold text-red-700">{t.topic}</p>
+                          <p className="text-[10px] text-red-500">{t.subject}</p>
+                        </div>
+                        <span className="text-sm font-black text-red-600">{t.pct}%</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              <button onClick={fetchProgress}
+                className="w-full py-3 rounded-2xl border border-slate-200 text-slate-500 font-bold text-xs flex items-center justify-center gap-2 active:scale-95"
+              >
+                <RefreshCw className="w-3.5 h-3.5" /> Refresh
+              </button>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Modals */}
       <AnimatePresence>
