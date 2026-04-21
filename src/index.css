@@ -1,13 +1,7 @@
 @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=Inter:wght@400;500;600&display=swap');
-@import "tailwindcss";
-
-@theme {
-  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
-  --font-display: "Outfit", sans-serif;
-  
-  --color-nigeria-green: #008751;
-  --color-nigeria-white: #FFFFFF;
-}
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
 
 @layer base {
   body {
@@ -28,5 +22,10 @@
 .markdown-body li { @apply mb-1; }
 .markdown-body strong { @apply font-semibold text-nigeria-green; }
 .markdown-body blockquote { @apply border-l-4 border-nigeria-green pl-4 italic my-4 bg-green-50 py-2; }
-.markdown-body code { @apply bg-slate-100 px-1 rounded font-mono text-sm; }
-.markdown-body pre { @apply bg-slate-900 text-slate-100 p-4 rounded-lg overflow-x-auto mb-4; }
+.markdown-body code { @apply bg-slate-100 px-1 rounded text-sm font-mono; }
+.markdown-body pre { @apply bg-slate-900 text-green-400 p-4 rounded-xl overflow-x-auto mb-4; }
+.markdown-body pre code { @apply bg-transparent px-0 text-inherit; }
+.markdown-body a { @apply text-nigeria-green underline; }
+.markdown-body table { @apply w-full border-collapse mb-4; }
+.markdown-body th { @apply bg-slate-100 font-bold p-2 border border-slate-200 text-left; }
+.markdown-body td { @apply p-2 border border-slate-200; }
