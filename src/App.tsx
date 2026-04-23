@@ -2806,11 +2806,29 @@ export default function App() {
     setTimeout(() => setToast(null), 3000);
   };
 
+  // Admin bypass: read ?admin=<token> from URL and persist in sessionStorage
+  const getAdminBypass = (): string | null => {
+    if (typeof window === 'undefined') return null;
+    const urlParam = new URLSearchParams(window.location.search).get('admin');
+    if (urlParam) {
+      sessionStorage.setItem('admin_bypass', urlParam);
+      // Clean it from the URL without a reload
+      const url = new URL(window.location.href);
+      url.searchParams.delete('admin');
+      window.history.replaceState({}, '', url.toString());
+    }
+    return sessionStorage.getItem('admin_bypass');
+  };
+
   const fetchProfile = async (uid: string, displayName?: string) => {
+    const adminBypass = getAdminBypass();
     try {
       const res = await fetch(`${API_BASE_URL}/api/auth/simple`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          ...(adminBypass ? { "x-admin-bypass": adminBypass } : {}),
+        },
         body: JSON.stringify({ uid, displayName })
       });
       if (res.status === 429) {

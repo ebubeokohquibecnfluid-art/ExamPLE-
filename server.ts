@@ -96,9 +96,13 @@ app.post("/api/auth/simple", async (req, res) => {
 
       // IP abuse check — only for new independent students (no school link yet)
       const clientIp = (req.headers['x-forwarded-for'] as string)?.split(',')[0]?.trim() || req.socket?.remoteAddress || 'unknown';
-      const existingFromIp = await db.get("SELECT uid FROM users WHERE created_ip = ? AND schoolid IS NULL", [clientIp]);
-      if (existingFromIp && clientIp !== 'unknown') {
-        return res.status(429).json({ error: "IP_LIMIT", message: "An account already exists from this network. Please use your existing Student Code to log in." });
+      const adminBypass = req.headers['x-admin-bypass'];
+      const isAdminBypass = adminBypass && adminBypass === (process.env.ADMIN_SECRET || ADMIN_SECRET);
+      if (!isAdminBypass) {
+        const existingFromIp = await db.get("SELECT uid FROM users WHERE created_ip = ? AND schoolid IS NULL", [clientIp]);
+        if (existingFromIp && clientIp !== 'unknown') {
+          return res.status(429).json({ error: "IP_LIMIT", message: "An account already exists from this network. Please use your existing Student Code to log in." });
+        }
       }
 
       const trialExpiresAt = new Date(Date.now() + 48 * 60 * 60 * 1000).toISOString();
