@@ -48,6 +48,45 @@ if (!apiKey) console.error("❌ Missing Gemini API Key");
 
 const ai = new GoogleGenAI({ apiKey });
 const ttsClient = new TextToSpeechClient();
+
+const PRIMARY_MODEL = "gemini-2.0-flash";
+const FALLBACK_MODEL = "gemini-2.0-flash-lite";
+
+// Retry generateContent: tries PRIMARY_MODEL, falls back to FALLBACK_MODEL on 503/overload
+async function generateWithRetry(params: { config?: any; contents: any[] }): Promise<any> {
+  const models = [PRIMARY_MODEL, FALLBACK_MODEL];
+  let lastErr: any;
+  for (const model of models) {
+    for (let attempt = 0; attempt < 2; attempt++) {
+      try {
+        return await ai.models.generateContent({ model, ...params });
+      } catch (e: any) {
+        const is503 = e?.message?.includes('503') || e?.message?.includes('UNAVAILABLE') || e?.status === 503;
+        lastErr = e;
+        if (is503 && attempt === 0) {
+          await new Promise(r => setTimeout(r, 1500)); // wait 1.5s then retry same model
+          continue;
+        }
+        break; // non-503 or second attempt failed — try next model
+      }
+    }
+  }
+  throw lastErr;
+}
+
+// Same for streaming
+async function generateStreamWithRetry(params: { config?: any; contents: any[] }): Promise<any> {
+  const models = [PRIMARY_MODEL, FALLBACK_MODEL];
+  let lastErr: any;
+  for (const model of models) {
+    try {
+      return await ai.models.generateContentStream({ model, ...params });
+    } catch (e: any) {
+      lastErr = e;
+    }
+  }
+  throw lastErr;
+}
 const PAYSTACK_SECRET = process.env.PAYSTACK_SECRET_KEY;
 const PLAN_PRICES = { 'Basic': 2500, 'Premium': 4500, 'Max': 6500, 'Top-up': 500 };
 const PLAN_UNITS = { 'Basic': 50, 'Premium': 100, 'Max': 250, 'Top-up': 10 };
@@ -237,11 +276,10 @@ CRITICAL RULES — follow every one, every time:
     res.setHeader('Cache-Control', 'no-cache');
     res.setHeader('Connection', 'keep-alive');
 
-    const stream = await ai.models.generateContentStream({
-      model: "gemini-2.5-flash",
+    const stream = await generateStreamWithRetry({
       config: {
         systemInstruction,
-        thinkingConfig: { thinkingBudget: 0 }, // Disable thinking — stream pure text immediately
+        thinkingConfig: { thinkingBudget: 0 },
       },
       contents: [{ role: "user", parts }],
     });
@@ -397,8 +435,7 @@ Rules:
 - "topic" should be a short topic name (e.g. "Mole Concept", "Genetics")
 - Return ONLY the JSON object, nothing else`;
 
-    const response = await ai.models.generateContent({
-      model: "gemini-2.5-flash",
+    const response = await generateWithRetry({
       config: { thinkingConfig: { thinkingBudget: 0 } },
       contents: [{ role: "user", parts: [{ text: prompt }] }],
     });
@@ -426,8 +463,13 @@ Rules:
       total: questions.length,
     });
   } catch (e: any) {
-    console.error("exam/start error:", e?.message);
-    res.status(500).json({ error: "Failed to generate exam", debug: e?.message });
+    console.error("exam/start error:", JSON.stringify(e?.message || e));
+    const is503 = e?.message?.includes('503') || e?.message?.includes('UNAVAILABLE');
+    res.status(500).json({
+      error: is503
+        ? "AI is experiencing high demand right now. Please wait a moment and try again."
+        : "Failed to generate exam. Please try again."
+    });
   }
 });
 
@@ -833,8 +875,7 @@ SCHOOLS:
 Keep answers concise and factual.`;
 
   try {
-    const response = await ai.models.generateContent({
-      model: "gemini-2.5-flash",
+    const response = await generateWithRetry({
       config: { systemInstruction: SYSTEM_INSTRUCTION },
       contents: [
         ...history.map((m: any) => ({
