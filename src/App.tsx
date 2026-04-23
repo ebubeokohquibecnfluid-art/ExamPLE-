@@ -45,7 +45,8 @@ import {
   RefreshCw,
   Award,
   ChevronDown,
-  Flame
+  Flame,
+  Zap
 } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import { BrowserRouter, Routes, Route, useParams, useNavigate, Link } from 'react-router-dom';
@@ -119,8 +120,11 @@ function AdminDashboard({ showToast }: { showToast: (msg: string, type?: 'succes
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [activePanel, setActivePanel] = useState<string | null>(null);
+  const [topupUid, setTopupUid] = useState('');
+  const [topupCredits, setTopupCredits] = useState(50);
+  const [topupLoading, setTopupLoading] = useState(false);
 
-  const ADMIN_SECRET = "exam-admin-2026";
+  const ADMIN_SECRET = process.env.VITE_ADMIN_SECRET || "exam-admin-2026";
 
   const fetchData = async () => {
     try {
@@ -187,6 +191,31 @@ function AdminDashboard({ showToast }: { showToast: (msg: string, type?: 'succes
       }
     } catch (err) {
       showToast("Failed to mark as paid", "error");
+    }
+  };
+
+  const handleTopup = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!topupUid.trim()) return showToast("Please select or enter a user ID", "error");
+    setTopupLoading(true);
+    try {
+      const res = await fetch(`${API_BASE_URL}/admin/topup`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${ADMIN_SECRET}` },
+        body: JSON.stringify({ uid: topupUid.trim(), credits: topupCredits })
+      });
+      const data = await res.json();
+      if (res.ok) {
+        showToast(`Done! ${data.displayName} now has ${data.creditsAfter} credits (was ${data.creditsBefore})`, "success");
+        setTopupUid('');
+        fetchData();
+      } else {
+        showToast(data.error || "Top-up failed", "error");
+      }
+    } catch {
+      showToast("Connection error", "error");
+    } finally {
+      setTopupLoading(false);
     }
   };
 
@@ -283,6 +312,43 @@ function AdminDashboard({ showToast }: { showToast: (msg: string, type?: 'succes
           ))}
         </div>
 
+        {/* Top-up Card */}
+        <div className="bg-white rounded-[32px] border border-slate-200 shadow-sm p-6">
+          <h2 className="text-base font-black text-slate-900 flex items-center gap-2 mb-5">
+            <Zap className="w-5 h-5 text-yellow-500" /> Top-up Credits
+          </h2>
+          <form onSubmit={handleTopup} className="space-y-4">
+            <div>
+              <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-1">User ID</label>
+              <input
+                type="text"
+                value={topupUid}
+                onChange={e => setTopupUid(e.target.value)}
+                placeholder="Tap a user row below, or paste UID here"
+                className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-4 py-3 text-sm focus:ring-2 focus:ring-slate-900/10 focus:border-slate-900 outline-none transition-all font-mono"
+              />
+            </div>
+            <div>
+              <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-2">Credits to Add</label>
+              <div className="flex flex-wrap gap-2 mb-3">
+                {[10, 50, 100, 250, 500].map(n => (
+                  <button key={n} type="button" onClick={() => setTopupCredits(n)}
+                    className={cn("px-4 py-2 rounded-xl text-xs font-black transition-all", topupCredits === n ? "bg-slate-900 text-white" : "bg-slate-100 text-slate-600 hover:bg-slate-200")}>
+                    {n}
+                  </button>
+                ))}
+                <input type="number" min={1} value={topupCredits} onChange={e => setTopupCredits(Number(e.target.value))}
+                  className="w-20 bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold text-center focus:ring-2 focus:ring-slate-900/10 outline-none" />
+              </div>
+            </div>
+            <button type="submit" disabled={topupLoading || !topupUid.trim()}
+              className="w-full bg-nigeria-green text-white py-3 rounded-2xl font-black text-sm shadow hover:opacity-90 transition-all active:scale-95 disabled:opacity-40 flex items-center justify-center gap-2">
+              {topupLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Zap className="w-4 h-4" />}
+              {topupLoading ? "Adding credits..." : `Add ${topupCredits} credits`}
+            </button>
+          </form>
+        </div>
+
         {/* Detailed Panels */}
         <AnimatePresence mode="wait">
           {activePanel === 'users' && (
@@ -308,10 +374,13 @@ function AdminDashboard({ showToast }: { showToast: (msg: string, type?: 'succes
                     </thead>
                     <tbody className="divide-y divide-slate-50">
                       {users.map((u) => (
-                        <tr key={u.uid} className="hover:bg-slate-50 transition-colors">
+                        <tr key={u.uid}
+                          onClick={() => { setTopupUid(u.uid); window.scrollTo({ top: 0, behavior: 'smooth' }); }}
+                          className="hover:bg-yellow-50 transition-colors cursor-pointer group"
+                          title="Tap to select for top-up">
                           <td className="px-6 py-4">
-                            <p className="text-sm font-bold text-slate-800">{u.displayName || u.uid.slice(0, 8)}</p>
-                            <p className="text-[10px] text-slate-400">{u.uid}</p>
+                            <p className="text-sm font-bold text-slate-800 group-hover:text-yellow-700">{u.displayName || u.uid.slice(0, 8)}</p>
+                            <p className="text-[10px] text-slate-400 font-mono">{u.uid}</p>
                           </td>
                           <td className="px-6 py-4 text-xs text-slate-600 font-medium">{u.school_name}</td>
                           <td className="px-6 py-4 text-sm font-black text-nigeria-green">{u.credits}</td>
