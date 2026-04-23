@@ -618,7 +618,7 @@ app.post("/request-withdrawal", async (req, res) => {
 });
 
 // --- ADMIN ENDPOINTS ---
-const ADMIN_SECRET = "exam-admin-2026";
+const ADMIN_SECRET = process.env.ADMIN_SECRET || "exam-admin-2026";
 
 const authenticateAdmin = (req, res, next) => {
   const authHeader = req.headers.authorization;
@@ -691,6 +691,21 @@ app.get("/admin/withdrawals", authenticateAdmin, async (req, res) => {
     
     res.json(enrichedWithdrawals);
   } catch (err) { res.status(500).json({ error: "Withdrawals failed" }); }
+});
+
+app.post("/admin/topup", authenticateAdmin, async (req, res) => {
+  if (!db) return res.status(500).json({ error: "DB missing" });
+  const { uid, credits } = req.body;
+  if (!uid || typeof credits !== 'number' || credits <= 0) {
+    return res.status(400).json({ error: "uid and a positive credits amount are required" });
+  }
+  try {
+    const user = await db.get("SELECT uid, credits, displayName FROM users WHERE uid = ?", [uid]);
+    if (!user) return res.status(404).json({ error: "User not found" });
+    await db.run("UPDATE users SET credits = credits + ? WHERE uid = ?", [credits, uid]);
+    const updated = await db.get("SELECT uid, credits, displayName FROM users WHERE uid = ?", [uid]);
+    res.json({ success: true, uid, creditsBefore: user.credits, creditsAfter: updated.credits, displayName: updated.displayName });
+  } catch (err) { res.status(500).json({ error: "Top-up failed" }); }
 });
 
 app.get("/admin/activity", authenticateAdmin, async (req, res) => {
