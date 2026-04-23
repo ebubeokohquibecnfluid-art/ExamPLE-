@@ -49,8 +49,8 @@ if (!apiKey) console.error("❌ Missing Gemini API Key");
 const ai = new GoogleGenAI({ apiKey });
 const ttsClient = new TextToSpeechClient();
 
-const PRIMARY_MODEL = "gemini-2.0-flash";
-const FALLBACK_MODEL = "gemini-2.0-flash-lite";
+const PRIMARY_MODEL = "gemini-2.5-flash";
+const FALLBACK_MODEL = "gemini-2.5-flash-lite";
 
 // Retry generateContent: tries PRIMARY_MODEL, falls back to FALLBACK_MODEL on 503/overload
 async function generateWithRetry(params: { config?: any; contents: any[] }): Promise<any> {
