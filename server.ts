@@ -715,7 +715,7 @@ app.post("/api/support/chat", async (req, res) => {
   const SCRIPTED: { pattern: RegExp; answer: string }[] = [
     {
       pattern: /\bschool.*regist|\bregist.*school|\bschool.*portal|\bown.*portal|\bpartner\b/i,
-      answer: `Schools can register on ExamPLE to get their own branded student portal.\n\nBenefits for schools:\n- A unique school link to share with students (exam-ple.xyz/your-school)\n- A referral code to onboard students\n- A dashboard to monitor student activity\n- 40% of subscription revenue from your students\n\nTo register, tap the Settings icon inside the app and select "Register Your School".`
+      answer: `Schools can register on ExamPLE to get their own branded student portal.\n\nBenefits for schools:\n- A unique school link to share with students (exam-ple.xyz/your-school)\n- A referral code to onboard students\n- A dashboard to monitor student activity and performance\n- 40% of subscription revenue from your students\n\nTo register, tap the Settings icon inside the app and select "Register Your School".`
     },
     {
       pattern: /\bschool.*dashboard|\bdashboard.*login|\bschool.*log.?in|\blog.?in.*school|\baccess.*dashboard|\bschool.*account\b/i,
@@ -724,6 +724,30 @@ app.post("/api/support/chat", async (req, res) => {
     {
       pattern: /\bforgot.*school.*pass|\bschool.*forgot.*pass|\breset.*school.*pass|\bschool.*pass.*reset|\bschool.*password\b/i,
       answer: `To reset your school password:\n\n1. Tap the Settings icon in the top-right corner of the app\n2. Scroll to "School Login" and tap it\n3. Tap "Forgot Password?" below the login form\n4. Enter your school's referral code (provided when you registered)\n5. Enter and confirm your new password\n6. Tap "Reset Password"\n\nYour referral code was shared with you when your school was first registered. If you have lost it, please contact ExamPLE support for assistance.`
+    },
+    {
+      pattern: /\bpast.?question|\bpast.?paper|\bprevious.*(question|exam)|\bold.*(question|exam)|\bquestion.*bank|\bpastq\b/i,
+      answer: `The Past Question Bank lets you practise with real past exam questions from WAEC, NECO, and JAMB.\n\nHow to use it:\n1. Tap the "Exam Mode" tab at the bottom of the app\n2. Switch the sub-tab at the top from "Practice Test" to "Past Questions"\n3. Select your subject\n4. Pick a year (2015 to 2024 available)\n5. Choose one of two modes:\n   - **Simulate Exam:** Timed, exam-condition experience — answers are hidden until you submit, just like the real thing\n   - **Similar to [Year]:** AI generates fresh questions in the style and difficulty of that year's paper\n6. Tap "Start" to begin\n\nYour score and performance are saved automatically to your Progress Tracker.`
+    },
+    {
+      pattern: /\bpractice.*test|\bpractice.*mode|\bpractice.*exam|\bexam.*practice\b/i,
+      answer: `Practice Test mode generates AI-powered exam questions tailored to your chosen subject and level.\n\nHow to use it:\n1. Tap the "Exam Mode" tab at the bottom of the app\n2. Make sure the "Practice Test" sub-tab is selected (it is the default)\n3. Enter your subject (e.g. Mathematics, Biology, Government)\n4. Select your exam type — WAEC, NECO, or JAMB\n5. Choose the number of questions (up to 20) and the time limit\n6. Tap "Start Exam"\n\nAt the end, you will see your score, a breakdown of correct and incorrect answers, and explanations for each question. Your results are saved to your Progress Tracker automatically.`
+    },
+    {
+      pattern: /\bexam.*mode|\bhow.*exam|\bstart.*exam|\bexam.*tab|\bexam.*feature|\btimed.*exam\b/i,
+      answer: `Exam Mode is where you practise under real exam conditions. It has two sub-modes:\n\n**Practice Test:**\nAI generates fresh questions for any subject you choose. Select your exam type (WAEC, NECO, or JAMB), the number of questions, and your time limit — then start immediately.\n\n**Past Questions:**\nPractise with real past exam questions. Pick a year between 2015 and 2024, then choose to either simulate the exact exam or get AI-generated questions in that year's style.\n\nTo get started, tap the "Exam Mode" tab at the bottom of the app.`
+    },
+    {
+      pattern: /\bprogress|\btrack.*progress|\bperformance|\bweak.*topic|\bmy.*score|\bmy.*result|\bsubject.*score\b/i,
+      answer: `The Progress Tracker shows you exactly how you are performing across all your subjects.\n\nWhat it displays:\n- **Subject scores:** Your average score for each subject you have practised\n- **Weak topics:** The specific topics within a subject where you need the most improvement\n- **Trend over time:** How your performance is changing as you study more\n\nHow to access it:\n1. Log into your ExamPLE account with your Student Code\n2. Tap the "Progress" tab at the bottom of the app\n\nYour tracker is updated automatically every time you complete an exam in Exam Mode. The more you practise, the more detailed your insights become.`
+    },
+    {
+      pattern: /\bai tutor|\bask.*question|\btutor|\bchat.*tab|\bwhat.*can.*ask|\bhow.*tutor\b/i,
+      answer: `The AI Tutor is ExamPLE's main learning feature — available 24 hours a day, 7 days a week.\n\nYou can:\n- **Ask any academic question** in any subject — Biology, Mathematics, English, Physics, Chemistry, Government, Literature, Economics, and more\n- **Get voice explanations** — tap the microphone icon to ask your question out loud and hear the answer read back to you\n- Receive step-by-step explanations written in a way that is easy to understand\n\nCredit usage:\n- Text question: 1 credit\n- Voice explanation: 2 credits\n\nTo use the AI Tutor, tap the "AI Tutor" tab at the bottom of the app after logging in.`
+    },
+    {
+      pattern: /\bvoice|\baudio|\bspeak|\bmicrophone|\blisten\b/i,
+      answer: `ExamPLE supports voice interactions in the AI Tutor.\n\nHow to use voice:\n1. Tap the "AI Tutor" tab\n2. Tap the microphone icon to speak your question\n3. The AI will process your question and read the answer back to you in audio\n\nVoice explanations cost 2 credits per interaction (compared to 1 credit for text questions). This is because voice uses additional AI processing to generate natural speech.\n\nVoice is great for studying while on the move or when you prefer to listen rather than read.`
     },
     {
       pattern: /\bjoin\b|\bsign.?up\b|\bget started\b|\bcreate.*(account|profile)\b/i,
@@ -735,15 +759,19 @@ app.post("/api/support/chat", async (req, res) => {
     },
     {
       pattern: /\bcredit|\bhow.*work|\bunit|\bcharge|\bcost\b/i,
-      answer: `Credits are the currency used for AI answers on ExamPLE:\n\n- **Text question:** 1 credit\n- **Voice explanation:** 2 credits\n\nNew students receive free starter credits when they join. Additional credits are purchased through one of the plans below:\n\n- Basic: ₦2,500 for 50 credits (30 days)\n- Premium: ₦4,500 for 100 credits (30 days)\n- Max: ₦6,500 for 250 credits (30 days)\n- Top-up: ₦500 for 10 credits (pay as you go)\n\nAll payments are processed securely via Paystack.`
+      answer: `Credits are the currency used for AI answers on ExamPLE:\n\n- **Text question (AI Tutor):** 1 credit\n- **Voice explanation (AI Tutor):** 2 credits\n- **Exam Mode and Progress Tracker:** Free — no credits required\n\nNew students receive free starter credits when they join. Additional credits are purchased through one of the plans below:\n\n- Basic: ₦2,500 for 50 credits (30 days)\n- Premium: ₦4,500 for 100 credits (30 days)\n- Max: ₦6,500 for 250 credits (30 days)\n- Top-up: ₦500 for 10 credits (pay as you go)\n\nAll payments are processed securely via Paystack.`
     },
     {
       pattern: /\bpric|\bplan|\bpay|\bsubscri|\bhow much\b/i,
-      answer: `ExamPLE offers the following credit plans, all paid securely via Paystack:\n\n- **Basic:** ₦2,500 for 50 credits (valid 30 days)\n- **Premium:** ₦4,500 for 100 credits (valid 30 days)\n- **Max:** ₦6,500 for 250 credits (valid 30 days)\n- **Top-up:** ₦500 for 10 credits (pay as you go, no expiry pressure)\n\nTo purchase, tap the credit/buy button inside the app while logged in.`
+      answer: `ExamPLE offers the following credit plans, all paid securely via Paystack:\n\n- **Basic:** ₦2,500 for 50 credits (valid 30 days)\n- **Premium:** ₦4,500 for 100 credits (valid 30 days)\n- **Max:** ₦6,500 for 250 credits (valid 30 days)\n- **Top-up:** ₦500 for 10 credits (pay as you go, no expiry pressure)\n\nCredits are used for AI Tutor questions (1 credit for text, 2 for voice). Exam Mode and Progress Tracker are free to use.\n\nTo purchase, tap the credit/buy button inside the app while logged in.`
     },
     {
       pattern: /\bstudent.*code\b|\bwhat.*code|\bcode.*mean|\bmy.*code\b/i,
       answer: `Your Student Code is a unique 6-character code assigned to you when you join ExamPLE (for example: AB3X7K).\n\nIt is how you log back into your account from any device — similar to a password.\n\nYou can find your code at any time by opening the Settings panel inside the app. Please save it somewhere safe, as losing it may make it harder to recover your account.`
+    },
+    {
+      pattern: /\bwhat.*feature|\bwhat.*can.*do|\bwhat.*include|\bwhat.*offer|\btell.*me.*about\b/i,
+      answer: `ExamPLE is an AI-powered exam preparation platform built specifically for Nigerian students. Here is what it includes:\n\n**AI Tutor**\nAsk any academic question — in text or by voice — and get clear, step-by-step explanations instantly. Available 24/7.\n\n**Exam Mode**\nTwo ways to practise:\n- *Practice Test:* AI-generated questions for any subject, exam type (WAEC, NECO, JAMB), and time limit you choose\n- *Past Question Bank:* Real past questions from 2015 to 2024 — simulate the exact exam or practise questions in that year's style\n\n**Progress Tracker**\nSee your scores per subject and your weakest topics so you know exactly where to focus your revision.\n\n**Payments**\nSecure credit purchases via Paystack. Plans start from ₦500.\n\nVisit exam-ple.xyz to get started.`
     },
   ];
 
@@ -758,13 +786,30 @@ app.post("/api/support/chat", async (req, res) => {
 
 Respond in professional, clear English only. Do not use slang, pidgin, or informal phrases.
 
-Key facts:
-- Students can join independently at exam-ple.xyz with no school required — tap Join, select New Student, enter a name, get a 6-character code.
+Key facts about ExamPLE:
+
+FEATURES:
+1. AI Tutor — the main chat tab. Students ask any academic question by text (1 credit) or voice/microphone (2 credits) and receive instant AI explanations. Available 24/7.
+2. Exam Mode — two sub-modes accessible via a tab switcher:
+   a. Practice Test: AI generates fresh exam questions. Student picks subject, exam type (WAEC/NECO/JAMB), number of questions, and time limit.
+   b. Past Question Bank: Real past exam questions from 2015 to 2024. Student picks subject and year. Two options: "Simulate Exam" (timed, answers hidden until submit) or "Similar to [Year]" (AI generates questions in that year's style). Exam Mode is free — no credits needed.
+3. Progress Tracker — tracks subject scores and weak topics automatically after every exam. Free to access. Requires login.
+
+ACCOUNT:
+- Students join at exam-ple.xyz — tap Join, select New Student, enter name, receive a 6-character Student Code instantly.
+- The Student Code is their login credential on any device. It must be saved safely.
 - Students can also join via a school link or referral code (optional).
-- Credits: 1 per text question, 2 per voice explanation.
-- Plans: Basic ₦2,500/50 credits, Premium ₦4,500/100 credits, Max ₦6,500/250 credits, Top-up ₦500/10 credits.
-- Payments via Paystack.
-- Schools earn 40% of student subscription revenue.
+- Lost code recovery: tap "Returning Student" then "Lost your code?" on the login screen.
+
+CREDITS & PRICING:
+- Credits are only used for the AI Tutor (text: 1 credit, voice: 2 credits). Exam Mode and Progress Tracker are free.
+- New students receive free starter credits.
+- Plans (paid via Paystack): Basic ₦2,500/50 credits (30 days), Premium ₦4,500/100 credits (30 days), Max ₦6,500/250 credits (30 days), Top-up ₦500/10 credits (no expiry).
+
+SCHOOLS:
+- Schools register to get a branded portal (exam-ple.xyz/school-slug), referral code, student activity dashboard, and 40% of student subscription revenue.
+- School login: Settings icon → School Login → enter slug + password.
+- School password reset: Settings → School Login → Forgot Password → enter referral code.
 
 Keep answers concise and factual.`;
 
