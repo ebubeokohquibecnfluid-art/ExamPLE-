@@ -759,11 +759,11 @@ app.post("/api/support/chat", async (req, res) => {
     },
     {
       pattern: /\bcredit|\bhow.*work|\bunit|\bcharge|\bcost\b/i,
-      answer: `Credits are the currency used for AI answers on ExamPLE:\n\n- **Text question (AI Tutor):** 1 credit\n- **Voice explanation (AI Tutor):** 2 credits\n- **Exam Mode and Progress Tracker:** Free — no credits required\n\nNew students receive free starter credits when they join. Additional credits are purchased through one of the plans below:\n\n- Basic: ₦2,500 for 50 credits (30 days)\n- Premium: ₦4,500 for 100 credits (30 days)\n- Max: ₦6,500 for 250 credits (30 days)\n- Top-up: ₦500 for 10 credits (pay as you go)\n\nAll payments are processed securely via Paystack.`
+      answer: `Credits are the currency used across ExamPLE:\n\n- **Text question (AI Tutor):** 1 credit\n- **Voice explanation (AI Tutor):** 2 credits\n- **Exam Mode:** 1 credit per question (e.g. a 10-question exam costs 10 credits, a 20-question exam costs 20 credits)\n- **Submitting and marking your exam:** Free\n- **Progress Tracker:** Free\n\nNew students receive free starter credits when they join. Additional credits are purchased through one of the plans below:\n\n- Basic: ₦2,500 for 50 credits (30 days)\n- Premium: ₦4,500 for 100 credits (30 days)\n- Max: ₦6,500 for 250 credits (30 days)\n- Top-up: ₦500 for 10 credits (pay as you go)\n\nAll payments are processed securely via Paystack.`
     },
     {
       pattern: /\bpric|\bplan|\bpay|\bsubscri|\bhow much\b/i,
-      answer: `ExamPLE offers the following credit plans, all paid securely via Paystack:\n\n- **Basic:** ₦2,500 for 50 credits (valid 30 days)\n- **Premium:** ₦4,500 for 100 credits (valid 30 days)\n- **Max:** ₦6,500 for 250 credits (valid 30 days)\n- **Top-up:** ₦500 for 10 credits (pay as you go, no expiry pressure)\n\nCredits are used for AI Tutor questions (1 credit for text, 2 for voice). Exam Mode and Progress Tracker are free to use.\n\nTo purchase, tap the credit/buy button inside the app while logged in.`
+      answer: `ExamPLE offers the following credit plans, all paid securely via Paystack:\n\n- **Basic:** ₦2,500 for 50 credits (valid 30 days)\n- **Premium:** ₦4,500 for 100 credits (valid 30 days)\n- **Max:** ₦6,500 for 250 credits (valid 30 days)\n- **Top-up:** ₦500 for 10 credits (pay as you go, no expiry pressure)\n\nHow credits are used:\n- AI Tutor text question: 1 credit\n- AI Tutor voice explanation: 2 credits\n- Exam Mode: 1 credit per question when starting an exam\n- Submitting and marking: free\n- Progress Tracker: free\n\nTo purchase, tap the credit/buy button inside the app while logged in.`
     },
     {
       pattern: /\bstudent.*code\b|\bwhat.*code|\bcode.*mean|\bmy.*code\b/i,
@@ -771,7 +771,7 @@ app.post("/api/support/chat", async (req, res) => {
     },
     {
       pattern: /\bwhat.*feature|\bwhat.*can.*do|\bwhat.*include|\bwhat.*offer|\btell.*me.*about\b/i,
-      answer: `ExamPLE is an AI-powered exam preparation platform built specifically for Nigerian students. Here is what it includes:\n\n**AI Tutor**\nAsk any academic question — in text or by voice — and get clear, step-by-step explanations instantly. Available 24/7.\n\n**Exam Mode**\nTwo ways to practise:\n- *Practice Test:* AI-generated questions for any subject, exam type (WAEC, NECO, JAMB), and time limit you choose\n- *Past Question Bank:* Real past questions from 2015 to 2024 — simulate the exact exam or practise questions in that year's style\n\n**Progress Tracker**\nSee your scores per subject and your weakest topics so you know exactly where to focus your revision.\n\n**Payments**\nSecure credit purchases via Paystack. Plans start from ₦500.\n\nVisit exam-ple.xyz to get started.`
+      answer: `ExamPLE is an AI-powered exam preparation platform built specifically for Nigerian students. Here is what it includes:\n\n**AI Tutor**\nAsk any academic question — in text or by voice — and get clear, step-by-step explanations instantly. Available 24/7.\n\n**Exam Mode**\nTwo ways to practise:\n- *Practice Test:* AI-generated questions for any subject, exam type (WAEC, NECO, JAMB), and time limit you choose\n- *Past Question Bank:* Real past questions from 2015 to 2024 — simulate the exact exam or practise questions in that year's style\n\nExam Mode costs 1 credit per question to start. Submitting and marking is free.\n\n**Progress Tracker**\nSee your scores per subject and your weakest topics so you know exactly where to focus your revision. Free to access.\n\n**Payments**\nSecure credit purchases via Paystack. Plans start from ₦500.\n\nVisit exam-ple.xyz to get started.`
     },
   ];
 
@@ -802,7 +802,7 @@ ACCOUNT:
 - Lost code recovery: tap "Returning Student" then "Lost your code?" on the login screen.
 
 CREDITS & PRICING:
-- Credits are only used for the AI Tutor (text: 1 credit, voice: 2 credits). Exam Mode and Progress Tracker are free.
+- Credits: AI Tutor text = 1 credit, AI Tutor voice = 2 credits, Exam Mode = 1 credit per question to start (submitting/marking is free), Progress Tracker = free.
 - New students receive free starter credits.
 - Plans (paid via Paystack): Basic ₦2,500/50 credits (30 days), Premium ₦4,500/100 credits (30 days), Max ₦6,500/250 credits (30 days), Top-up ₦500/10 credits (no expiry).
 
