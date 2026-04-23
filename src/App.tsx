@@ -369,7 +369,7 @@ function AdminDashboard({ showToast }: { showToast: (msg: string, type?: 'succes
                         <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Student</th>
                         <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">School</th>
                         <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Credits</th>
-                        <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Expiry</th>
+                        <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Access Until</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-50">
@@ -384,8 +384,22 @@ function AdminDashboard({ showToast }: { showToast: (msg: string, type?: 'succes
                           </td>
                           <td className="px-6 py-4 text-xs text-slate-600 font-medium">{u.school_name}</td>
                           <td className="px-6 py-4 text-sm font-black text-nigeria-green">{u.credits}</td>
-                          <td className="px-6 py-4 text-[10px] text-slate-500">
-                            {u.expiry_date ? new Date(u.expiry_date).toLocaleDateString() : "Never"}
+                          <td className="px-6 py-4 text-[10px]">
+                            {u.expiry_date ? (
+                              <div>
+                                <span className="text-[8px] font-black text-purple-400 uppercase block">Plan</span>
+                                <span className="text-slate-600">{new Date(u.expiry_date).toLocaleDateString()}</span>
+                              </div>
+                            ) : u.trial_expires_at ? (
+                              <div>
+                                <span className="text-[8px] font-black text-blue-400 uppercase block">Trial</span>
+                                <span className={new Date(u.trial_expires_at) < new Date() ? "text-red-400 line-through" : "text-slate-600"}>
+                                  {new Date(u.trial_expires_at).toLocaleDateString()}
+                                </span>
+                              </div>
+                            ) : (
+                              <span className="text-slate-400 italic">No expiry</span>
+                            )}
                           </td>
                         </tr>
                       ))}
