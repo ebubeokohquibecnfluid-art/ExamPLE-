@@ -1714,12 +1714,15 @@ function MainApp({ user, profile, onLogin, onLogout, refreshProfile, showToast, 
                 className="mr-auto items-start max-w-[90%] w-full"
               >
                 <div className="bg-white rounded-2xl rounded-tl-none border border-slate-200 shadow-sm p-4">
+                  {/* Header */}
                   <div className="flex items-center gap-2 mb-1">
                     <GraduationCap className="w-5 h-5 text-nigeria-green" />
                     <span className="text-sm font-black text-slate-800">Join ExamPLE to get your answer</span>
                   </div>
-                  <p className="text-xs text-slate-500 mb-4">Start free — no payment needed. Upgrade anytime for more credits.</p>
-                  <div className="grid grid-cols-2 gap-2">
+                  <p className="text-xs text-slate-500 mb-3">Start free — no payment needed. Upgrade anytime for more credits.</p>
+
+                  {/* Pricing plans */}
+                  <div className="grid grid-cols-2 gap-2 mb-4">
                     {plans.map((plan) => (
                       <button
                         key={plan.name}
@@ -1749,6 +1752,42 @@ function MainApp({ user, profile, onLogin, onLogout, refreshProfile, showToast, 
                         <p className="text-[10px] opacity-60">{plan.duration}</p>
                       </button>
                     ))}
+                  </div>
+
+                  {/* Divider */}
+                  <div className="flex items-center gap-2 mb-3">
+                    <div className="flex-1 h-px bg-slate-100" />
+                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Other options</span>
+                    <div className="flex-1 h-px bg-slate-100" />
+                  </div>
+
+                  {/* School paths */}
+                  <div className="space-y-2">
+                    <button
+                      onClick={onLogin}
+                      className="w-full flex items-center gap-3 p-3 bg-slate-50 rounded-2xl border border-slate-200 hover:border-nigeria-green hover:bg-green-50 transition-all text-left group"
+                    >
+                      <div className="bg-white p-2 rounded-xl shadow-sm shrink-0 group-hover:scale-110 transition-all">
+                        <Users className="w-4 h-4 text-nigeria-green" />
+                      </div>
+                      <div>
+                        <p className="text-xs font-black text-slate-800">Joining through your school?</p>
+                        <p className="text-[10px] text-slate-500">Sign up then enter your school's referral code</p>
+                      </div>
+                    </button>
+
+                    <button
+                      onClick={() => setShowSettings(true)}
+                      className="w-full flex items-center gap-3 p-3 bg-slate-50 rounded-2xl border border-slate-200 hover:border-purple-400 hover:bg-purple-50 transition-all text-left group"
+                    >
+                      <div className="bg-white p-2 rounded-xl shadow-sm shrink-0 group-hover:scale-110 transition-all">
+                        <School className="w-4 h-4 text-purple-500" />
+                      </div>
+                      <div>
+                        <p className="text-xs font-black text-slate-800">I am a School</p>
+                        <p className="text-[10px] text-slate-500">Register or manage your school portal</p>
+                      </div>
+                    </button>
                   </div>
                 </div>
               </motion.div>
