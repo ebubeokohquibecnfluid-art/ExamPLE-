@@ -9,6 +9,7 @@ import { getDb } from "./src/db.js";
 
 const app = express();
 const PORT = Number(process.env.PORT) || 5000;
+const ADMIN_SECRET = "exam-admin-2026";
 
 // --- 1. CORS CONFIGURATION ---
 app.use(cors());
@@ -97,7 +98,7 @@ app.post("/api/auth/simple", async (req, res) => {
       // IP abuse check — only for new independent students (no school link yet)
       const clientIp = (req.headers['x-forwarded-for'] as string)?.split(',')[0]?.trim() || req.socket?.remoteAddress || 'unknown';
       const adminBypass = req.headers['x-admin-bypass'];
-      const isAdminBypass = adminBypass && adminBypass === (process.env.ADMIN_SECRET || ADMIN_SECRET);
+      const isAdminBypass = adminBypass && adminBypass === ADMIN_SECRET;
       if (!isAdminBypass) {
         const existingFromIp = await db.get("SELECT uid FROM users WHERE created_ip = ? AND schoolid IS NULL", [clientIp]);
         if (existingFromIp && clientIp !== 'unknown') {
@@ -618,7 +619,6 @@ app.post("/request-withdrawal", async (req, res) => {
 });
 
 // --- ADMIN ENDPOINTS ---
-const ADMIN_SECRET = process.env.ADMIN_SECRET || "exam-admin-2026";
 
 const authenticateAdmin = (req, res, next) => {
   const authHeader = req.headers.authorization;

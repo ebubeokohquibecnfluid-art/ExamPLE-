@@ -124,7 +124,7 @@ function AdminDashboard({ showToast }: { showToast: (msg: string, type?: 'succes
   const [topupCredits, setTopupCredits] = useState(50);
   const [topupLoading, setTopupLoading] = useState(false);
 
-  const ADMIN_SECRET = process.env.VITE_ADMIN_SECRET || "exam-admin-2026";
+  const ADMIN_SECRET = "exam-admin-2026";
 
   const fetchData = async () => {
     try {
