@@ -55,7 +55,7 @@ type StudentLevel = "Primary" | "Secondary" | "Exam";
 
 interface Message {
   id: string;
-  role: 'user' | 'assistant';
+  role: 'user' | 'assistant' | 'join-prompt';
   content: string;
   image?: string;
   timestamp: Date;
@@ -973,6 +973,7 @@ function MainApp({ user, profile, onLogin, onLogout, refreshProfile, showToast, 
   const [showTopUp, setShowTopUp] = useState(false);
   const [showSchoolReg, setShowSchoolReg] = useState(false);
   const [registeredSchool, setRegisteredSchool] = useState<any>(null);
+  const [pendingPlan, setPendingPlan] = useState<{ name: string; price: number; credits: number } | null>(null);
   
   // Inputs
   const [schoolCodeInput, setSchoolCodeInput] = useState('');
@@ -1075,6 +1076,15 @@ function MainApp({ user, profile, onLogin, onLogout, refreshProfile, showToast, 
   useEffect(() => {
     if (trialExpired && user) setShowTopUp(true);
   }, [trialExpired, user]);
+
+  // After a visitor signs up with a pending paid plan, auto-trigger payment
+  useEffect(() => {
+    if (user && pendingPlan) {
+      const plan = pendingPlan;
+      setPendingPlan(null);
+      handleBuyCredits(plan.name, plan.price, plan.credits);
+    }
+  }, [user]);
 
   const chatEndRef = useRef<HTMLDivElement>(null);
 
@@ -1198,6 +1208,28 @@ function MainApp({ user, profile, onLogin, onLogout, refreshProfile, showToast, 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!question.trim() && !imageBase64) return;
+
+    // Visitor (not logged in) — show question + join-prompt card in chat
+    if (!user) {
+      const visitorMsg: Message = {
+        id: Date.now().toString(),
+        role: 'user',
+        content: question,
+        image: imageBase64 || undefined,
+        timestamp: new Date(),
+      };
+      const joinMsg: Message = {
+        id: (Date.now() + 1).toString(),
+        role: 'join-prompt',
+        content: '',
+        timestamp: new Date(),
+      };
+      setMessages(prev => [...prev, visitorMsg, joinMsg]);
+      setQuestion('');
+      setImageBase64(null);
+      return;
+    }
+
     if (credits < 1 || trialExpired) {
       setShowTopUp(true);
       return;
@@ -1665,7 +1697,66 @@ function MainApp({ user, profile, onLogin, onLogout, refreshProfile, showToast, 
           </div>
         )}
 
-        {messages.map((msg) => (
+        {messages.map((msg) => {
+          // --- Join-prompt card for visitors ---
+          if (msg.role === 'join-prompt') {
+            const plans = [
+              { name: 'Free', price: 0,    credits: 10,  duration: '48 hrs',  color: 'bg-green-50 border-nigeria-green text-nigeria-green', badge: 'No payment needed' },
+              { name: 'Basic',   price: 2500,  credits: 50,  duration: '30 days', color: 'bg-blue-50 border-blue-200 text-blue-700', badge: null },
+              { name: 'Premium', price: 4500,  credits: 100, duration: '30 days', color: 'bg-purple-50 border-purple-200 text-purple-700', badge: 'Most popular' },
+              { name: 'Max',     price: 6500,  credits: 250, duration: '30 days', color: 'bg-amber-50 border-amber-200 text-amber-700', badge: 'Best value' },
+            ];
+            return (
+              <motion.div
+                key={msg.id}
+                initial={{ opacity: 0, y: 10, scale: 0.95 }}
+                animate={{ opacity: 1, y: 0, scale: 1 }}
+                className="mr-auto items-start max-w-[90%] w-full"
+              >
+                <div className="bg-white rounded-2xl rounded-tl-none border border-slate-200 shadow-sm p-4">
+                  <div className="flex items-center gap-2 mb-1">
+                    <GraduationCap className="w-5 h-5 text-nigeria-green" />
+                    <span className="text-sm font-black text-slate-800">Join ExamPLE to get your answer</span>
+                  </div>
+                  <p className="text-xs text-slate-500 mb-4">Start free — no payment needed. Upgrade anytime for more credits.</p>
+                  <div className="grid grid-cols-2 gap-2">
+                    {plans.map((plan) => (
+                      <button
+                        key={plan.name}
+                        onClick={() => {
+                          if (plan.price === 0) {
+                            onLogin();
+                          } else {
+                            setPendingPlan({ name: plan.name, price: plan.price, credits: plan.credits });
+                            onLogin();
+                          }
+                        }}
+                        className={cn(
+                          "relative border-2 rounded-2xl p-3 text-left transition-all hover:scale-[1.03] active:scale-95",
+                          plan.color
+                        )}
+                      >
+                        {plan.badge && (
+                          <span className="absolute -top-2 left-3 text-[9px] font-black uppercase tracking-wider bg-white border border-current rounded-full px-2 py-0.5">
+                            {plan.badge}
+                          </span>
+                        )}
+                        <p className="text-[10px] font-black uppercase tracking-widest opacity-60 mb-1">{plan.name}</p>
+                        <p className="text-xl font-black leading-none mb-1">
+                          {plan.price === 0 ? 'Free' : `₦${plan.price.toLocaleString()}`}
+                        </p>
+                        <p className="text-[11px] font-bold">{plan.credits} units</p>
+                        <p className="text-[10px] opacity-60">{plan.duration}</p>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </motion.div>
+            );
+          }
+
+          // --- Regular user / assistant messages ---
+          return (
           <motion.div
             key={msg.id}
             initial={{ opacity: 0, y: 10, scale: 0.95 }}
@@ -1750,7 +1841,8 @@ function MainApp({ user, profile, onLogin, onLogout, refreshProfile, showToast, 
               )}
             </div>
           </motion.div>
-        ))}
+          );
+        })}
 
         {loading && (
           <div className="flex items-start mr-auto max-w-[85%]">
