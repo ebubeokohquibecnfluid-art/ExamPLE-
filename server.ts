@@ -3,6 +3,7 @@ import path from "path";
 import fs from "fs";
 import axios from "axios";
 import cors from "cors";
+import multer from "multer";
 import { GoogleGenAI, Modality } from "@google/genai";
 import { TextToSpeechClient } from "@google-cloud/text-to-speech";
 import { getDb } from "./src/db.js";
@@ -11,8 +12,28 @@ const app = express();
 const PORT = Number(process.env.PORT) || 5000;
 const ADMIN_SECRET = "exam-admin-2026";
 
+const UPLOADS_DIR = path.join(process.cwd(), "uploads", "logos");
+fs.mkdirSync(UPLOADS_DIR, { recursive: true });
+
+const logoStorage = multer.diskStorage({
+  destination: (_req, _file, cb) => cb(null, UPLOADS_DIR),
+  filename: (_req, file, cb) => {
+    const ext = path.extname(file.originalname).toLowerCase() || '.png';
+    cb(null, `logo_${Date.now()}${ext}`);
+  }
+});
+const uploadLogo = multer({
+  storage: logoStorage,
+  limits: { fileSize: 2 * 1024 * 1024 },
+  fileFilter: (_req, file, cb) => {
+    if (file.mimetype.startsWith('image/')) cb(null, true);
+    else cb(new Error('Only image files are allowed'));
+  }
+});
+
 // --- 1. CORS CONFIGURATION ---
 app.use(cors());
+app.use('/uploads', express.static(path.join(process.cwd(), 'uploads')));
 
 // --- 2. DEDICATED HEALTH CHECK ---
 app.get("/health", (req, res) => {
@@ -640,6 +661,13 @@ app.post("/api/schools/save-customization", async (req, res) => {
     );
     res.json({ success: true });
   } catch (err) { res.status(500).json({ error: "Customisation save failed" }); }
+});
+
+// Upload school logo
+app.post("/api/schools/upload-logo", uploadLogo.single('logo'), async (req: any, res) => {
+  if (!req.file) return res.status(400).json({ error: "No file uploaded" });
+  const logoUrl = `${req.protocol}://${req.get('host')}/uploads/logos/${req.file.filename}`;
+  res.json({ success: true, logo_url: logoUrl });
 });
 
 // Account deletion

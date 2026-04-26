@@ -632,6 +632,8 @@ function SchoolDashboard({ showToast }: { showToast: (msg: string, type?: 'succe
   const [customTagline, setCustomTagline] = useState('');
   const [savingCustom, setSavingCustom] = useState(false);
   const [showCustomForm, setShowCustomForm] = useState(false);
+  const [uploadingLogo, setUploadingLogo] = useState(false);
+  const logoInputRef = useRef<HTMLInputElement>(null);
 
   const fetchDashboard = async () => {
     try {
@@ -803,6 +805,22 @@ function SchoolDashboard({ showToast }: { showToast: (msg: string, type?: 'succe
       }
     } catch { showToast("Connection error", "error"); }
     finally { setSavingCustom(false); }
+  };
+
+  const handleLogoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (file.size > 2 * 1024 * 1024) { showToast("Logo must be under 2 MB", "error"); return; }
+    setUploadingLogo(true);
+    try {
+      const formData = new FormData();
+      formData.append('logo', file);
+      const res = await fetch(`${API_BASE_URL}/api/schools/upload-logo`, { method: 'POST', body: formData });
+      const data = await res.json();
+      if (res.ok) { setCustomLogo(data.logo_url); showToast("Logo uploaded!", "success"); }
+      else showToast(data.error || "Upload failed", "error");
+    } catch { showToast("Upload failed", "error"); }
+    finally { setUploadingLogo(false); if (logoInputRef.current) logoInputRef.current.value = ''; }
   };
 
   if (loading) {
@@ -1149,11 +1167,15 @@ function SchoolDashboard({ showToast }: { showToast: (msg: string, type?: 'succe
           </div>
           {!showCustomForm ? (
             <div className="flex items-center gap-3 bg-slate-50 rounded-2xl p-4">
-              <div className="w-8 h-8 rounded-xl flex-shrink-0" style={{ backgroundColor: customColor || '#008751' }} />
+              {customLogo ? (
+                <img src={customLogo} alt="School logo" className="w-10 h-10 rounded-xl object-cover flex-shrink-0 border border-slate-200" />
+              ) : (
+                <div className="w-8 h-8 rounded-xl flex-shrink-0" style={{ backgroundColor: customColor || '#008751' }} />
+              )}
               <div className="min-w-0">
-                {customLogo && <p className="text-[10px] text-slate-500 truncate">Logo: {customLogo}</p>}
                 {customTagline && <p className="text-xs font-bold text-slate-700 truncate">{customTagline}</p>}
                 {!customTagline && !customLogo && <p className="text-[10px] text-slate-400 italic">No custom branding set</p>}
+                {customLogo && !customTagline && <p className="text-[10px] text-slate-500">Logo uploaded</p>}
               </div>
             </div>
           ) : (
@@ -1177,14 +1199,32 @@ function SchoolDashboard({ showToast }: { showToast: (msg: string, type?: 'succe
                 </div>
               </div>
               <div className="space-y-1">
-                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Logo URL (optional)</label>
-                <input
-                  type="url"
-                  placeholder="https://yourschool.com/logo.png"
-                  value={customLogo}
-                  onChange={e => setCustomLogo(e.target.value)}
-                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-nigeria-green/20 focus:border-nigeria-green outline-none"
-                />
+                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">School Logo (optional)</label>
+                <input ref={logoInputRef} type="file" accept="image/*" onChange={handleLogoUpload} className="hidden" />
+                <div className="flex items-center gap-3">
+                  {customLogo ? (
+                    <img src={customLogo} alt="Logo preview" className="w-12 h-12 rounded-xl object-cover border border-slate-200 flex-shrink-0" />
+                  ) : (
+                    <div className="w-12 h-12 rounded-xl bg-slate-100 border border-slate-200 flex items-center justify-center flex-shrink-0">
+                      <GraduationCap className="w-6 h-6 text-slate-300" />
+                    </div>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => logoInputRef.current?.click()}
+                    disabled={uploadingLogo}
+                    className="flex-1 flex items-center justify-center gap-2 bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm text-slate-600 hover:bg-slate-100 transition-all disabled:opacity-50"
+                  >
+                    {uploadingLogo ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />}
+                    {uploadingLogo ? 'Uploading…' : (customLogo ? 'Change Logo' : 'Upload Logo')}
+                  </button>
+                  {customLogo && (
+                    <button type="button" onClick={() => setCustomLogo('')} className="p-2 text-slate-400 hover:text-red-400 transition-all">
+                      <X className="w-4 h-4" />
+                    </button>
+                  )}
+                </div>
+                <p className="text-[10px] text-slate-400 ml-1">PNG, JPG or SVG · Max 2 MB</p>
               </div>
               <div className="space-y-1">
                 <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Tagline (optional)</label>
