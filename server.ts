@@ -166,7 +166,16 @@ app.post("/api/auth/simple", async (req, res) => {
       }
 
       const trialExpiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
-      await db.run("INSERT INTO users (uid, credits, displayName, created_ip, trial_expires_at) VALUES (?, ?, ?, ?, ?) ON CONFLICT (uid) DO NOTHING", [uid, 10, displayName || "Student", clientIp, trialExpiresAt]);
+      // ON CONFLICT DO UPDATE makes this idempotent — concurrent or repeated sign-in
+      // attempts for the same uid will never produce a duplicate-key error.
+      // Existing credits/ip/expiry are preserved; only a missing displayname is filled in.
+      await db.run(
+        `INSERT INTO users (uid, credits, displayname, created_ip, trial_expires_at)
+         VALUES (?, ?, ?, ?, ?)
+         ON CONFLICT (uid) DO UPDATE SET
+           displayname = COALESCE(users.displayname, EXCLUDED.displayname)`,
+        [uid, 10, displayName || "Student", clientIp, trialExpiresAt]
+      );
     } else if (displayName && !user.displayName) {
       await db.run("UPDATE users SET displayName = ? WHERE uid = ?", [displayName, uid]);
     }
