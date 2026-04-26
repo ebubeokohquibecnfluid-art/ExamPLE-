@@ -848,6 +848,28 @@ app.get("/admin/schools/:school_id/students", authenticateAdmin, async (req: any
   } catch (err) { res.status(500).json({ error: "Failed to load students" }); }
 });
 
+app.delete("/admin/users/:uid", authenticateAdmin, async (req: any, res) => {
+  if (!db) return res.status(500).json({ error: "DB missing" });
+  try {
+    const user = await db.get("SELECT uid, displayname FROM users WHERE uid = ?", [req.params.uid]);
+    if (!user) return res.status(404).json({ error: "User not found" });
+    await db.run("DELETE FROM users WHERE uid = ?", [req.params.uid]);
+    res.json({ success: true, deleted: req.params.uid });
+  } catch (err) { res.status(500).json({ error: "Failed to delete user" }); }
+});
+
+app.delete("/admin/schools/:school_id", authenticateAdmin, async (req: any, res) => {
+  if (!db) return res.status(500).json({ error: "DB missing" });
+  try {
+    const school = await db.get("SELECT school_id FROM schools WHERE school_id = ?", [req.params.school_id]);
+    if (!school) return res.status(404).json({ error: "School not found" });
+    await db.run("UPDATE users SET schoolId = NULL WHERE schoolId = ?", [req.params.school_id]);
+    await db.run("DELETE FROM withdrawals WHERE school_id = ?", [req.params.school_id]);
+    await db.run("DELETE FROM schools WHERE school_id = ?", [req.params.school_id]);
+    res.json({ success: true, deleted: req.params.school_id });
+  } catch (err) { res.status(500).json({ error: "Failed to delete school" }); }
+});
+
 app.get("/admin/withdrawals", authenticateAdmin, async (req, res) => {
   if (!db) return res.status(500).json({ error: "DB missing" });
   try {

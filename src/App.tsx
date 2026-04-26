@@ -134,6 +134,8 @@ function AdminDashboard({ showToast }: { showToast: (msg: string, type?: 'succes
   const [selectedSchool, setSelectedSchool] = useState<any | null>(null);
   const [schoolStudents, setSchoolStudents] = useState<any[]>([]);
   const [loadingStudents, setLoadingStudents] = useState(false);
+  const [deleteConfirm, setDeleteConfirm] = useState<{ type: 'user' | 'school'; id: string; name: string } | null>(null);
+  const [deleting, setDeleting] = useState(false);
 
   const ADMIN_SECRET = "exam-admin-2026";
 
@@ -228,6 +230,32 @@ function AdminDashboard({ showToast }: { showToast: (msg: string, type?: 'succes
     } finally {
       setTopupLoading(false);
     }
+  };
+
+  const handleDelete = async () => {
+    if (!deleteConfirm) return;
+    setDeleting(true);
+    try {
+      const url = deleteConfirm.type === 'user'
+        ? `${API_BASE_URL}/admin/users/${deleteConfirm.id}`
+        : `${API_BASE_URL}/admin/schools/${deleteConfirm.id}`;
+      const res = await fetch(url, {
+        method: 'DELETE',
+        headers: { 'Authorization': `Bearer ${ADMIN_SECRET}` }
+      });
+      if (res.ok) {
+        showToast(`${deleteConfirm.type === 'user' ? 'Student' : 'School'} deleted`, 'success');
+        setDeleteConfirm(null);
+        if (deleteConfirm.type === 'user' && selectedSchool) {
+          setSchoolStudents(prev => prev.filter(s => s.uid !== deleteConfirm.id));
+        }
+        fetchData();
+      } else {
+        const data = await res.json();
+        showToast(data.error || 'Delete failed', 'error');
+      }
+    } catch { showToast('Connection error', 'error'); }
+    finally { setDeleting(false); }
   };
 
   const handleViewSchoolStudents = async (school: any) => {
@@ -394,6 +422,7 @@ function AdminDashboard({ showToast }: { showToast: (msg: string, type?: 'succes
                         <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">School</th>
                         <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Credits</th>
                         <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Access Until</th>
+                        <th className="px-4 py-4"></th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-50">
@@ -425,6 +454,15 @@ function AdminDashboard({ showToast }: { showToast: (msg: string, type?: 'succes
                               <span className="text-slate-400 italic">No expiry</span>
                             )}
                           </td>
+                          <td className="px-4 py-4" onClick={e => e.stopPropagation()}>
+                            <button
+                              onClick={() => setDeleteConfirm({ type: 'user', id: u.uid, name: u.displayName || u.uid.slice(0, 10) })}
+                              className="p-1.5 rounded-lg text-slate-300 hover:text-red-500 hover:bg-red-50 transition-all"
+                              title="Delete student"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </td>
                         </tr>
                       ))}
                     </tbody>
@@ -453,6 +491,7 @@ function AdminDashboard({ showToast }: { showToast: (msg: string, type?: 'succes
                         <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Code</th>
                         <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Students</th>
                         <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Earnings</th>
+                        <th className="px-4 py-4"></th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-50">
@@ -467,6 +506,15 @@ function AdminDashboard({ showToast }: { showToast: (msg: string, type?: 'succes
                           <td className="px-6 py-4 text-xs font-mono font-black text-purple-600">{s.referral_code}</td>
                           <td className="px-6 py-4 text-xs font-bold text-slate-600">{s.total_students}</td>
                           <td className="px-6 py-4 text-sm font-black text-nigeria-green">₦{s.total_earnings?.toLocaleString()}</td>
+                          <td className="px-4 py-4" onClick={e => e.stopPropagation()}>
+                            <button
+                              onClick={() => setDeleteConfirm({ type: 'school', id: s.school_id, name: s.school_name })}
+                              className="p-1.5 rounded-lg text-slate-300 hover:text-red-500 hover:bg-red-50 transition-all"
+                              title="Delete school"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </td>
                         </tr>
                       ))}
                     </tbody>
@@ -625,6 +673,48 @@ function AdminDashboard({ showToast }: { showToast: (msg: string, type?: 'succes
         )}
       </main>
 
+      {/* Delete Confirmation Modal */}
+      <AnimatePresence>
+        {deleteConfirm && (
+          <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              className="bg-white rounded-[28px] w-full max-w-sm shadow-2xl p-6 space-y-4"
+            >
+              <div className="w-12 h-12 rounded-2xl bg-red-50 flex items-center justify-center mx-auto">
+                <Trash2 className="w-6 h-6 text-red-500" />
+              </div>
+              <div className="text-center space-y-1">
+                <h3 className="text-base font-black text-slate-900">Delete {deleteConfirm.type === 'user' ? 'Student' : 'School'}?</h3>
+                <p className="text-sm text-slate-500">
+                  <span className="font-bold text-slate-700">{deleteConfirm.name}</span> will be permanently removed.
+                  {deleteConfirm.type === 'school' && ' All enrolled students will be unlinked.'}
+                </p>
+              </div>
+              <div className="flex gap-3">
+                <button
+                  onClick={() => setDeleteConfirm(null)}
+                  disabled={deleting}
+                  className="flex-1 py-3 rounded-2xl bg-slate-100 text-slate-700 font-bold text-sm hover:bg-slate-200 transition-all"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleDelete}
+                  disabled={deleting}
+                  className="flex-1 py-3 rounded-2xl bg-red-500 text-white font-bold text-sm hover:bg-red-600 transition-all flex items-center justify-center gap-2 disabled:opacity-60"
+                >
+                  {deleting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
+                  {deleting ? 'Deleting…' : 'Delete'}
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
       {/* School Students Modal */}
       <AnimatePresence>
         {selectedSchool && (
@@ -669,15 +759,24 @@ function AdminDashboard({ showToast }: { showToast: (msg: string, type?: 'succes
                               <p className="text-[10px] text-slate-400 font-mono">{s.uid?.slice(0, 14)}…</p>
                             </div>
                           </div>
-                          <div className="text-right flex-shrink-0">
-                            <p className="text-sm font-black text-nigeria-green">{s.credits} cr</p>
-                            <span className={`text-[9px] font-black uppercase tracking-widest px-1.5 py-0.5 rounded-full ${
-                              hasActivePlan ? 'bg-green-100 text-green-600' :
-                              hasTrial ? 'bg-blue-100 text-blue-500' :
-                              'bg-red-50 text-red-400'
-                            }`}>
-                              {hasActivePlan ? 'Subscribed' : hasTrial ? 'Trial' : 'Expired'}
-                            </span>
+                          <div className="flex items-center gap-3 flex-shrink-0">
+                            <div className="text-right">
+                              <p className="text-sm font-black text-nigeria-green">{s.credits} cr</p>
+                              <span className={`text-[9px] font-black uppercase tracking-widest px-1.5 py-0.5 rounded-full ${
+                                hasActivePlan ? 'bg-green-100 text-green-600' :
+                                hasTrial ? 'bg-blue-100 text-blue-500' :
+                                'bg-red-50 text-red-400'
+                              }`}>
+                                {hasActivePlan ? 'Subscribed' : hasTrial ? 'Trial' : 'Expired'}
+                              </span>
+                            </div>
+                            <button
+                              onClick={() => setDeleteConfirm({ type: 'user', id: s.uid, name: s.displayName || s.uid.slice(0, 10) })}
+                              className="p-1.5 rounded-lg text-slate-300 hover:text-red-500 hover:bg-red-50 transition-all"
+                              title="Delete student"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
                           </div>
                         </div>
                       );
