@@ -59,6 +59,8 @@ export async function generateExplanation(request: ExplanationRequest) {
   return response.text;
 }
 
+export const TTS_MODELS = ["gemini-2.0-flash", "gemini-2.0-flash-lite"];
+
 export async function generateAudio(text: string, usePidgin: boolean) {
   const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
   
@@ -70,21 +72,30 @@ export async function generateAudio(text: string, usePidgin: boolean) {
 
   const prompt = `Say this cheerfully and with the warmth of a Nigerian teacher${usePidgin ? " in Pidgin" : ""}: ${cleanText}`;
 
-  const response = await ai.models.generateContent({
-    model: "gemini-2.0-flash",
-    contents: [{ parts: [{ text: prompt }] }],
-    config: {
-      responseModalities: [Modality.AUDIO],
-      speechConfig: {
-        voiceConfig: {
-          prebuiltVoiceConfig: { voiceName: 'Kore' },
+  let lastError: unknown;
+  for (const model of TTS_MODELS) {
+    try {
+      const response = await ai.models.generateContent({
+        model,
+        contents: [{ parts: [{ text: prompt }] }],
+        config: {
+          responseModalities: [Modality.AUDIO],
+          speechConfig: {
+            voiceConfig: {
+              prebuiltVoiceConfig: { voiceName: 'Kore' },
+            },
+          },
         },
-      },
-    },
-  });
+      });
 
-  const base64Audio = response.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
-  if (!base64Audio) throw new Error("No audio generated");
-  
-  return base64Audio;
+      const base64Audio = response.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
+      if (base64Audio) return base64Audio;
+      lastError = new Error("No audio data in response");
+    } catch (err) {
+      console.error(`generateAudio: model ${model} failed:`, err);
+      lastError = err;
+    }
+  }
+
+  throw lastError ?? new Error("All TTS models failed to generate audio");
 }

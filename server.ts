@@ -6,6 +6,7 @@ import cors from "cors";
 import multer from "multer";
 import { GoogleGenAI, Modality } from "@google/genai";
 import { getDb } from "./src/db.js";
+import { TTS_MODELS } from "./src/services/geminiService.js";
 
 const app = express();
 const PORT = Number(process.env.PORT) || 5000;
@@ -376,32 +377,54 @@ app.post("/register-school", async (req, res) => {
 app.post("/get-audio", async (req, res) => {
   const { text, user_id } = req.body;
   try {
-    // Deduct 2 units for audio explanation if user_id is provided
+    // Check credits before attempting generation, but do NOT deduct yet
     if (user_id && db) {
       const credits = await getUserCredits(user_id);
       if (credits < 2) return res.status(403).json({ error: "Not enough credits for audio" });
+    }
+
+    // Try each TTS model in order; fall back to the next if one fails
+    let audioData: string | undefined;
+    let lastError: unknown;
+    for (const model of TTS_MODELS) {
+      try {
+        const response = await ai.models.generateContent({
+          model,
+          contents: [{ 
+            parts: [{ 
+              text: `Say this exactly, but use a friendly, professional Nigerian teacher accent and rhythm: ${text}` 
+            }] 
+          }],
+          config: { 
+            responseModalities: [Modality.AUDIO], 
+            speechConfig: { 
+              voiceConfig: { 
+                prebuiltVoiceConfig: { voiceName: 'Kore' } 
+              } 
+            } 
+          },
+        });
+        const data = response.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
+        if (data) { audioData = data; break; }
+        lastError = new Error("No audio data in response");
+      } catch (err) {
+        console.error(`Audio generation failed with model ${model}:`, err);
+        lastError = err;
+      }
+    }
+
+    if (!audioData) {
+      console.error("All TTS models exhausted:", lastError);
+      return res.status(503).json({ 
+        error: "Voice generation is temporarily unavailable. Please try again later." 
+      });
+    }
+
+    // Only deduct credits after audio was successfully generated
+    if (user_id && db) {
       await db.run("UPDATE users SET credits = GREATEST(0, credits - 2) WHERE uid = ?", [user_id]);
     }
 
-    // Use Gemini TTS for voice synthesis
-    const response = await ai.models.generateContent({
-      model: "gemini-2.0-flash",
-      contents: [{ 
-        parts: [{ 
-          text: `Say this exactly, but use a friendly, professional Nigerian teacher accent and rhythm: ${text}` 
-        }] 
-      }],
-      config: { 
-        responseModalities: [Modality.AUDIO], 
-        speechConfig: { 
-          voiceConfig: { 
-            prebuiltVoiceConfig: { voiceName: 'Kore' } 
-          } 
-        } 
-      },
-    });
-    const audioData = response.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
-    if (!audioData) throw new Error("No audio data returned from TTS");
     res.json({ 
       audio: audioData,
       voice: 'gemini-tts',
@@ -409,7 +432,7 @@ app.post("/get-audio", async (req, res) => {
     });
   } catch (err) { 
     console.error("Audio generation failed:", err);
-    res.status(500).json({ error: "Audio failed" }); 
+    res.status(500).json({ error: "Voice generation is temporarily unavailable. Please try again later." }); 
   }
 });
 
