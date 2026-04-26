@@ -1785,7 +1785,7 @@ function MainApp({ user, profile, onLogin, onLogout, refreshProfile, showToast, 
           // --- Join-prompt card for visitors ---
           if (msg.role === 'join-prompt') {
             const plans = [
-              { name: 'Free', price: 0,    credits: 10,  duration: '48 hrs',  color: 'bg-green-50 border-nigeria-green text-nigeria-green', badge: 'No payment needed' },
+              { name: 'Free', price: 0,    credits: 10,  duration: '7 days',  color: 'bg-green-50 border-nigeria-green text-nigeria-green', badge: 'No payment needed' },
               { name: 'Basic',   price: 2500,  credits: 50,  duration: '30 days', color: 'bg-blue-50 border-blue-200 text-blue-700', badge: null },
               { name: 'Premium', price: 4500,  credits: 100, duration: '30 days', color: 'bg-purple-50 border-purple-200 text-purple-700', badge: 'Most popular' },
               { name: 'Max',     price: 6500,  credits: 250, duration: '30 days', color: 'bg-amber-50 border-amber-200 text-amber-700', badge: 'Best value' },
@@ -2460,7 +2460,7 @@ function MainApp({ user, profile, onLogin, onLogout, refreshProfile, showToast, 
                 </h2>
                 <p className="text-sm text-slate-500 mt-1">
                   {trialExpired
-                    ? 'Your 48-hour free trial has ended. Choose a plan to keep learning.'
+                    ? 'Your 7-day free trial has ended. Choose a plan to keep learning.'
                     : 'Choose a plan to continue learning'}
                 </p>
               </div>
