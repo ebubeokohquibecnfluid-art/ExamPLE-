@@ -176,7 +176,7 @@ app.post("/api/auth/simple", async (req, res) => {
         [uid, 10, displayName || "Student", clientIp, trialExpiresAt]
       );
     } else if (displayName && !user.displayName) {
-      await db.run("UPDATE users SET displayName = ? WHERE uid = ?", [displayName, uid]);
+      await db.run("UPDATE users SET displayname = ? WHERE uid = ?", [displayName, uid]);
     }
     const fresh = await db.get("SELECT * FROM users WHERE uid = ?", [uid]);
     // Attach school customisation so the frontend can theme itself
@@ -214,11 +214,11 @@ app.post("/api/students/recover-code", async (req, res) => {
       // School-linked student: find by name + school
       const school = await db.get("SELECT school_id FROM schools WHERE school_slug = ?", [school_slug.toLowerCase().trim()]);
       if (!school) return res.status(404).json({ error: "School not found. Check the school slug and try again." });
-      student = await db.get("SELECT uid, displayName FROM users WHERE displayName = ? AND schoolId = ?", [displayName, school.school_id]);
+      student = await db.get("SELECT uid, displayname FROM users WHERE displayname = ? AND schoolid = ?", [displayName, school.school_id]);
       if (!student) return res.status(404).json({ error: "No student found with that name in this school." });
     } else {
       // Independent student: find by name with no school linked
-      student = await db.get("SELECT uid, displayName FROM users WHERE displayName = ? AND schoolId IS NULL", [displayName]);
+      student = await db.get("SELECT uid, displayname FROM users WHERE displayname = ? AND schoolid IS NULL", [displayName]);
       if (!student) return res.status(404).json({ error: "No independent student found with that name." });
     }
     const code = student.uid.replace('user_', '');
@@ -911,7 +911,7 @@ app.post("/admin/topup", authenticateAdmin, async (req, res) => {
     res.json({
       success: true, uid,
       creditsBefore: user.credits, creditsAfter: updated.credits,
-      displayName: updated.displayname,
+      displayName: updated.displayName,
       expiryDate: newExpiry
     });
   } catch (err) { res.status(500).json({ error: "Top-up failed" }); }

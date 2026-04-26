@@ -35,7 +35,6 @@ async function ensureSchema(): Promise<void> {
       credits INTEGER DEFAULT 10,
       schoolid TEXT,
       expiry_date TEXT,
-      display_name TEXT,
       displayname TEXT,
       created_ip TEXT,
       trial_expires_at TEXT
@@ -43,6 +42,7 @@ async function ensureSchema(): Promise<void> {
     ALTER TABLE users ADD COLUMN IF NOT EXISTS created_ip TEXT;
     ALTER TABLE users ADD COLUMN IF NOT EXISTS trial_expires_at TEXT;
     ALTER TABLE users ADD COLUMN IF NOT EXISTS displayname TEXT;
+    ALTER TABLE users DROP COLUMN IF EXISTS display_name;
     CREATE TABLE IF NOT EXISTS schools (
       school_id TEXT PRIMARY KEY,
       school_name TEXT,
