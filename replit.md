@@ -36,12 +36,14 @@ ExamPLE is an AI-powered educational platform for Nigerian students (Primary, Se
 - `GEMINI_API_KEY` — Required for AI tutoring and TTS
 - `PAYSTACK_SECRET_KEY` — Payment processing and webhook verification
 - `DATABASE_URL`, `PGHOST`, `PGUSER`, `PGPASSWORD`, `PGDATABASE`, `PGPORT` — Auto-set by Replit PostgreSQL
-- `SLACK_WEBHOOK_URL` *(optional)* — If set, GitHub sync failures in `scripts/post-merge.sh` will send a Slack alert
+- `ALERT_WEBHOOK_URL` *(optional)* — Set this as a Replit Secret (never hardcode it). When present, GitHub sync failures in `scripts/post-merge.sh` will POST a JSON alert to this URL (works with Slack, Discord, Zapier, Make, webhook.site, etc.)
+- `SLACK_WEBHOOK_URL` *(optional, legacy)* — Set as a Replit Secret. Fallback alert if `ALERT_WEBHOOK_URL` is not set
 
 ## GitHub Sync Alerts
 
 - `scripts/post-merge.sh` logs every push (success/failure) to `logs/github-sync.log` (git-ignored)
-- On failure: error is logged with timestamp + output, Slack alert sent if `SLACK_WEBHOOK_URL` is configured
+- On failure: error is logged with timestamp + output, then an HTTP POST alert is fired to `ALERT_WEBHOOK_URL` (or `SLACK_WEBHOOK_URL` as fallback)
+- Alert payload format: `{"text": "[ExamPLE] GitHub sync FAILED after deploy (exit <code>): <details>"}` — compatible with any service that accepts Slack-style incoming webhooks
 - Admin endpoint `GET /api/admin/github-sync-status` (requires `X-Admin-Secret` header) returns recent sync history and highlights the last failure
 
 ## Vercel Environment Variables
