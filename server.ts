@@ -190,12 +190,14 @@ app.post("/api/students/recover-code", async (req, res) => {
 });
 
 app.post("/api/payments/initialize", async (req, res) => {
-  const { email, amount, userId, planName } = req.body;
+  const { email, amount, userId, planName, callbackBase } = req.body;
   const credits = PLAN_UNITS[planName] || 0;
-  
+  // Use the domain the user is actually on — fallback to APP_URL env, then hardcoded custom domain
+  const appBase = (callbackBase || process.env.APP_URL || 'https://exam-ple.xyz').replace(/\/$/, '');
+
   // Demo Mode check
   if (PAYSTACK_SECRET === "sk_test_examPLE_demo_key_999") {
-    return res.json({ status: true, data: { authorization_url: `${process.env.APP_URL || ''}/payment-success?demo=true&userId=${userId}&credits=${credits}&amount=${amount}` } });
+    return res.json({ status: true, data: { authorization_url: `${appBase}/payment-success?demo=true&userId=${userId}&credits=${credits}&amount=${amount}` } });
   }
   if (!PAYSTACK_SECRET) return res.status(500).json({ error: "Paystack not configured" });
   try {
@@ -203,7 +205,7 @@ app.post("/api/payments/initialize", async (req, res) => {
       email, 
       amount: amount * 100, 
       metadata: { userId, planName, credits },
-      callback_url: `${process.env.APP_URL}/payment-success`
+      callback_url: `${appBase}/payment-success`
     }, { headers: { Authorization: `Bearer ${PAYSTACK_SECRET}` } });
     res.json(response.data);
   } catch (err) { res.status(500).json({ error: "Payment failed" }); }

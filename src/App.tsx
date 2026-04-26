@@ -1565,7 +1565,8 @@ function MainApp({ user, profile, onLogin, onLogout, refreshProfile, showToast, 
           email: user.email,
           amount,
           userId: userId,
-          planName: plan
+          planName: plan,
+          callbackBase: window.location.origin
         })
       });
       
