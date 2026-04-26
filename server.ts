@@ -100,23 +100,24 @@ const getUserCredits = async (userId) => {
 
     const now = new Date();
 
-    // Check paid subscription expiry
+    // Check paid subscription / admin topup expiry
     if (user.expiry_date) {
       const subExpiry = new Date(user.expiry_date);
       if (subExpiry < now) {
+        // Subscription expired — clear it so the trial check below applies
         await db.run("UPDATE users SET credits = 0, expiry_date = NULL WHERE uid = ?", [userId]);
         return 0;
       }
-      // Active subscription — return credits normally
+      // Active subscription or admin-topped-up account — return credits normally
       return user.credits;
     }
 
-    // No paid subscription — check 7-day free trial window
+    // No active subscription — check 7-day free trial window
     if (user.trial_expires_at) {
       const trialExpiry = new Date(user.trial_expires_at);
       if (trialExpiry < now) {
-        // Trial window has closed — zero out any remaining free credits
-        if (user.credits > 0) await db.run("UPDATE users SET credits = 0 WHERE uid = ?", [userId]);
+        // Trial window has closed — block access but do NOT zero credits in DB
+        // (admin may have added credits without this code running first)
         return 0;
       }
     }
@@ -750,11 +751,22 @@ app.post("/admin/topup", authenticateAdmin, async (req, res) => {
     return res.status(400).json({ error: "uid and a positive credits amount are required" });
   }
   try {
-    const user = await db.get("SELECT uid, credits, displayName FROM users WHERE uid = ?", [uid]);
+    const user = await db.get("SELECT uid, credits, displayname, expiry_date FROM users WHERE uid = ?", [uid]);
     if (!user) return res.status(404).json({ error: "User not found" });
-    await db.run("UPDATE users SET credits = credits + ? WHERE uid = ?", [credits, uid]);
-    const updated = await db.get("SELECT uid, credits, displayName FROM users WHERE uid = ?", [uid]);
-    res.json({ success: true, uid, creditsBefore: user.credits, creditsAfter: updated.credits, displayName: updated.displayName });
+
+    // Extend expiry: take the later of (existing expiry, now + 30 days)
+    const thirtyDaysFromNow = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
+    const existingExpiry = user.expiry_date ? new Date(user.expiry_date) : null;
+    const newExpiry = (existingExpiry && existingExpiry > thirtyDaysFromNow ? existingExpiry : thirtyDaysFromNow).toISOString();
+
+    await db.run("UPDATE users SET credits = credits + ?, expiry_date = ? WHERE uid = ?", [credits, newExpiry, uid]);
+    const updated = await db.get("SELECT uid, credits, displayname FROM users WHERE uid = ?", [uid]);
+    res.json({
+      success: true, uid,
+      creditsBefore: user.credits, creditsAfter: updated.credits,
+      displayName: updated.displayname,
+      expiryDate: newExpiry
+    });
   } catch (err) { res.status(500).json({ error: "Top-up failed" }); }
 });
 
