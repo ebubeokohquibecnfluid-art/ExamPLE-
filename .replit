@@ -49,3 +49,7 @@ run = ["tsx", "server.ts"]
 
 [userenv.shared]
 ADMIN_SECRET = "ExamPLE2026"
+
+[postMerge]
+path = "scripts/post-merge.sh"
+timeoutMs = 60000
