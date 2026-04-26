@@ -1028,7 +1028,35 @@ Keep answers concise and factual.`;
   }
 });
 
-// --- 7. API STATUS ---
+// --- 7. GITHUB SYNC STATUS ---
+app.get("/api/admin/github-sync-status", (req, res) => {
+  const secret = req.headers["x-admin-secret"];
+  if (!secret || secret !== ADMIN_SECRET) {
+    return res.status(401).json({ error: "Unauthorized" });
+  }
+  const logPath = path.join(process.cwd(), "logs", "github-sync.log");
+  if (!fs.existsSync(logPath)) {
+    return res.json({ entries: [], message: "No sync log found — no pushes recorded yet." });
+  }
+  const raw = fs.readFileSync(logPath, "utf8");
+  const blocks = raw.split("---\n").filter(Boolean);
+  const entries = blocks.map((block) => {
+    const lines = block.trim().split("\n");
+    const header = lines[0] || "";
+    const isFailed = header.includes("FAILURE");
+    const tsMatch = header.match(/\[(.+?)\]/);
+    return {
+      timestamp: tsMatch ? tsMatch[1] : "unknown",
+      status: isFailed ? "failed" : "success",
+      detail: lines.slice(1).join("\n").trim() || null,
+    };
+  });
+  const recent = entries.slice(-50).reverse();
+  const lastFailure = recent.find((e) => e.status === "failed") || null;
+  res.json({ entries: recent, lastFailure });
+});
+
+// --- 8. API STATUS ---
 app.get("/", (req, res) => {
   res.json({ 
     message: "ExamPLE API is online", 
@@ -1037,11 +1065,11 @@ app.get("/", (req, res) => {
   });
 });
 
-// --- 8. GLOBAL ERROR HANDLING ---
+// --- 9. GLOBAL ERROR HANDLING ---
 process.on("uncaughtException", (err) => { console.error("Uncaught Exception:", err); });
 process.on("unhandledRejection", (err) => { console.error("Unhandled Rejection:", err); });
 
-// --- 9. SERVER START (AT THE VERY END) ---
+// --- 10. SERVER START (AT THE VERY END) ---
 app.listen(PORT, "0.0.0.0", () => {
   console.log(`🚀 ExamPLE running on port ${PORT}`);
 });

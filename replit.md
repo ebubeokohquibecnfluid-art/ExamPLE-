@@ -36,6 +36,13 @@ ExamPLE is an AI-powered educational platform for Nigerian students (Primary, Se
 - `GEMINI_API_KEY` — Required for AI tutoring and TTS
 - `PAYSTACK_SECRET_KEY` — Payment processing and webhook verification
 - `DATABASE_URL`, `PGHOST`, `PGUSER`, `PGPASSWORD`, `PGDATABASE`, `PGPORT` — Auto-set by Replit PostgreSQL
+- `SLACK_WEBHOOK_URL` *(optional)* — If set, GitHub sync failures in `scripts/post-merge.sh` will send a Slack alert
+
+## GitHub Sync Alerts
+
+- `scripts/post-merge.sh` logs every push (success/failure) to `logs/github-sync.log` (git-ignored)
+- On failure: error is logged with timestamp + output, Slack alert sent if `SLACK_WEBHOOK_URL` is configured
+- Admin endpoint `GET /api/admin/github-sync-status` (requires `X-Admin-Secret` header) returns recent sync history and highlights the last failure
 
 ## Vercel Environment Variables
 
