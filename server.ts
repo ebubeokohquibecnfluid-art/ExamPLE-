@@ -114,36 +114,34 @@ const PLAN_UNITS = { 'Basic': 50, 'Premium': 100, 'Max': 250, 'Top-up': 10 };
 // Helper for credits
 const getUserCredits = async (userId) => {
   if (!db) return 0;
-  try {
-    const user = await db.get("SELECT credits, expiry_date, trial_expires_at FROM users WHERE uid = ?", [userId]);
-    if (!user) return 0;
+  const user = await db.get("SELECT credits, expiry_date, trial_expires_at FROM users WHERE uid = ?", [userId]);
+  if (!user) return 0;
 
-    const now = new Date();
+  const now = new Date();
 
-    // Check paid subscription / admin topup expiry
-    if (user.expiry_date) {
-      const subExpiry = new Date(user.expiry_date);
-      if (subExpiry < now) {
-        // Subscription expired — clear it so the trial check below applies
-        await db.run("UPDATE users SET credits = 0, expiry_date = NULL WHERE uid = ?", [userId]);
-        return 0;
-      }
-      // Active subscription or admin-topped-up account — return credits normally
-      return user.credits;
+  // Check paid subscription / admin topup expiry
+  if (user.expiry_date) {
+    const subExpiry = new Date(user.expiry_date);
+    if (subExpiry < now) {
+      // Subscription expired — clear it so the trial check below applies
+      await db.run("UPDATE users SET credits = 0, expiry_date = NULL WHERE uid = ?", [userId]);
+      return 0;
     }
-
-    // No active subscription — check 7-day free trial window
-    if (user.trial_expires_at) {
-      const trialExpiry = new Date(user.trial_expires_at);
-      if (trialExpiry < now) {
-        // Trial window has closed — block access but do NOT zero credits in DB
-        // (admin may have added credits without this code running first)
-        return 0;
-      }
-    }
-
+    // Active subscription or admin-topped-up account — return credits normally
     return user.credits;
-  } catch (e) { return 0; }
+  }
+
+  // No active subscription — check 7-day free trial window
+  if (user.trial_expires_at) {
+    const trialExpiry = new Date(user.trial_expires_at);
+    if (trialExpiry < now) {
+      // Trial window has closed — block access but do NOT zero credits in DB
+      // (admin may have added credits without this code running first)
+      return 0;
+    }
+  }
+
+  return user.credits;
 };
 
 // --- 6. API ENDPOINTS ---
@@ -256,25 +254,30 @@ app.get("/payment-success", async (req, res) => {
   const payAmount = Number(amount);
   
   if (demo === "true" && userId && creditAmount && db) {
-    const expiry = new Date();
-    expiry.setDate(expiry.getDate() + 30);
-    const expiryStr = expiry.toISOString();
-    
-    await db.run("UPDATE users SET credits = credits + ?, expiry_date = ? WHERE uid = ?", [creditAmount, expiryStr, userId]);
-    
-    // Revenue Sharing (40% to school)
-    const user = await db.get("SELECT schoolId FROM users WHERE uid = ?", [userId]);
-    if (user && user.schoolId) {
-      const schoolComm = payAmount * 0.4;
-      await db.run("UPDATE schools SET total_earnings = total_earnings + ? WHERE school_id = ?", [schoolComm, user.schoolId]);
+    try {
+      const expiry = new Date();
+      expiry.setDate(expiry.getDate() + 30);
+      const expiryStr = expiry.toISOString();
+
+      await db.run("UPDATE users SET credits = credits + ?, expiry_date = ? WHERE uid = ?", [creditAmount, expiryStr, userId]);
+
+      // Revenue Sharing (40% to school)
+      const user = await db.get("SELECT schoolId FROM users WHERE uid = ?", [userId]);
+      if (user && user.schoolId) {
+        const schoolComm = payAmount * 0.4;
+        await db.run("UPDATE schools SET total_earnings = total_earnings + ? WHERE school_id = ?", [schoolComm, user.schoolId]);
+      }
+
+      // Log activity
+      await db.run("INSERT INTO activity (type, details, timestamp) VALUES (?, ?, ?)", [
+        'payment',
+        JSON.stringify({ userId, amount: payAmount, credits: creditAmount }),
+        new Date().toISOString()
+      ]);
+    } catch (err) {
+      console.error("payment-success DB error:", err);
+      return res.status(500).json({ error: "Payment recording failed" });
     }
-    
-    // Log activity
-    await db.run("INSERT INTO activity (type, details, timestamp) VALUES (?, ?, ?)", [
-      'payment', 
-      JSON.stringify({ userId, amount: payAmount, credits: creditAmount }), 
-      new Date().toISOString()
-    ]);
   }
   const distPath = path.join(process.cwd(), "dist");
   res.sendFile(path.join(distPath, "index.html"));
@@ -569,7 +572,7 @@ app.post("/api/exam/submit", async (req, res) => {
 
 app.get("/api/progress/:user_id", async (req, res) => {
   const { user_id } = req.params;
-  if (!db) return res.json({ subjects: [] });
+  if (!db) return res.status(503).json({ error: "Database unavailable" });
   try {
     const rows = await db.all(
       `SELECT subject,
@@ -604,7 +607,7 @@ app.get("/api/progress/:user_id", async (req, res) => {
     res.json({ subjects, weakTopics });
   } catch (e: any) {
     console.error("progress error:", e?.message);
-    res.json({ subjects: [], weakTopics: [] });
+    res.status(500).json({ error: "Failed to load progress" });
   }
 });
 

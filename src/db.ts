@@ -121,27 +121,39 @@ export async function getDb() {
       try {
         const result = await pool.query(toPostgres(query), params);
         return result.rows.length > 0 ? transformRow(result.rows[0]) : null;
-      } catch (e) { console.error('db.get error:', e); return null; }
+      } catch (e) {
+        console.error('db.get error:', e);
+        throw e;
+      }
     },
 
     run: async (query: string, params: any[] = []): Promise<any> => {
       try {
         const result = await pool.query(toPostgres(query), params);
         return { changes: result.rowCount ?? 0 };
-      } catch (e) { console.error('db.run error:', e); return { changes: 0 }; }
+      } catch (e) {
+        console.error('db.run error:', e);
+        throw e;
+      }
     },
 
     all: async (query: string, params: any[] = []): Promise<any[]> => {
       try {
         const result = await pool.query(toPostgres(query), params);
         return result.rows.map(transformRow);
-      } catch (e) { console.error('db.all error:', e); return []; }
+      } catch (e) {
+        console.error('db.all error:', e);
+        throw e;
+      }
     },
 
     exec: async (query: string): Promise<void> => {
       try {
         await pool.query(query);
-      } catch (e) { console.error('db.exec error:', e); }
+      } catch (e) {
+        console.error('db.exec error:', e);
+        throw e;
+      }
     }
   };
 }
