@@ -661,11 +661,11 @@ function AdminDashboard({ showToast }: { showToast: (msg: string, type?: 'succes
                           <div className="flex items-center gap-3">
                             <div className="w-8 h-8 rounded-full bg-purple-50 flex items-center justify-center flex-shrink-0">
                               <span className="text-xs font-black text-purple-500">
-                                {(s.displayname || s.uid || '?')[0].toUpperCase()}
+                                {(s.displayName || s.uid || '?')[0].toUpperCase()}
                               </span>
                             </div>
                             <div>
-                              <p className="text-sm font-bold text-slate-800">{s.displayname || 'Unknown'}</p>
+                              <p className="text-sm font-bold text-slate-800">{s.displayName || s.uid}</p>
                               <p className="text-[10px] text-slate-400 font-mono">{s.uid?.slice(0, 14)}…</p>
                             </div>
                           </div>
@@ -1357,11 +1357,11 @@ function SchoolDashboard({ showToast }: { showToast: (msg: string, type?: 'succe
                     <div className="flex items-center gap-3">
                       <div className="w-8 h-8 rounded-full bg-blue-50 flex items-center justify-center flex-shrink-0">
                         <span className="text-xs font-black text-blue-500">
-                          {(s.displayname || s.uid || '?')[0].toUpperCase()}
+                          {(s.displayName || s.uid || '?')[0].toUpperCase()}
                         </span>
                       </div>
                       <div>
-                        <p className="text-sm font-bold text-slate-800">{s.displayname || 'Unknown'}</p>
+                        <p className="text-sm font-bold text-slate-800">{s.displayName || s.uid}</p>
                         <p className="text-[10px] text-slate-400 font-mono">{s.uid?.slice(0, 12)}…</p>
                       </div>
                     </div>
