@@ -345,11 +345,15 @@ CRITICAL RULES — follow every one, every time:
       }
     }
 
-    if (db) await db.run("UPDATE users SET credits = GREATEST(0, credits - ?) WHERE uid = ?", [cost, user_id]);
+    // Only deduct credits if the AI actually returned content; no charge for empty/failed responses
+    if (db && totalText) {
+      await db.run("UPDATE users SET credits = GREATEST(0, credits - ?) WHERE uid = ?", [cost, user_id]);
+    }
     res.write(`data: [DONE]\n\n`);
     res.end();
   } catch (e: any) {
     console.error("ask-question error:", e?.message || e);
+    // No credit deduction on error — user is not charged if the AI call fails
     try { res.write(`data: ${JSON.stringify({ error: "AI unavailable", debug: e?.message })}\n\n`); res.end(); } catch {}
   }
 });
@@ -500,6 +504,7 @@ Rules:
       "INSERT INTO exam_sessions (id, user_id, subject, level, exam_type, questions, total, status, started_at) VALUES (?, ?, ?, ?, ?, ?, ?, 'active', ?)",
       [session_id, user_id, subject, level || 'Secondary', exam_type || 'WAEC', JSON.stringify(questions), questions.length, new Date().toISOString()]
     );
+    // Deduct credits only after questions are successfully generated and stored
     await db.run("UPDATE users SET credits = GREATEST(0, credits - ?) WHERE uid = ?", [cost, user_id]);
 
     // Return questions WITHOUT answers/scheme/mistakes (those stay server-side)
