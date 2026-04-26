@@ -131,6 +131,9 @@ function AdminDashboard({ showToast }: { showToast: (msg: string, type?: 'succes
   const [topupUid, setTopupUid] = useState('');
   const [topupCredits, setTopupCredits] = useState(50);
   const [topupLoading, setTopupLoading] = useState(false);
+  const [selectedSchool, setSelectedSchool] = useState<any | null>(null);
+  const [schoolStudents, setSchoolStudents] = useState<any[]>([]);
+  const [loadingStudents, setLoadingStudents] = useState(false);
 
   const ADMIN_SECRET = "exam-admin-2026";
 
@@ -225,6 +228,19 @@ function AdminDashboard({ showToast }: { showToast: (msg: string, type?: 'succes
     } finally {
       setTopupLoading(false);
     }
+  };
+
+  const handleViewSchoolStudents = async (school: any) => {
+    setSelectedSchool(school);
+    setLoadingStudents(true);
+    setSchoolStudents([]);
+    try {
+      const res = await fetch(`${API_BASE_URL}/admin/schools/${school.school_id}/students`, {
+        headers: { 'Authorization': `Bearer ${ADMIN_SECRET}` }
+      });
+      if (res.ok) setSchoolStudents(await res.json());
+    } catch { /* silent */ }
+    finally { setLoadingStudents(false); }
   };
 
   if (loading) {
@@ -441,8 +457,13 @@ function AdminDashboard({ showToast }: { showToast: (msg: string, type?: 'succes
                     </thead>
                     <tbody className="divide-y divide-slate-50">
                       {schools.map((s) => (
-                        <tr key={s.school_id} className="hover:bg-slate-50 transition-colors">
-                          <td className="px-6 py-4 text-sm font-bold text-slate-800">{s.school_name}</td>
+                        <tr
+                          key={s.school_id}
+                          onClick={() => handleViewSchoolStudents(s)}
+                          className="hover:bg-purple-50 transition-colors cursor-pointer group"
+                          title="Click to view students"
+                        >
+                          <td className="px-6 py-4 text-sm font-bold text-slate-800 group-hover:text-purple-700">{s.school_name}</td>
                           <td className="px-6 py-4 text-xs font-mono font-black text-purple-600">{s.referral_code}</td>
                           <td className="px-6 py-4 text-xs font-bold text-slate-600">{s.total_students}</td>
                           <td className="px-6 py-4 text-sm font-black text-nigeria-green">₦{s.total_earnings?.toLocaleString()}</td>
@@ -603,6 +624,71 @@ function AdminDashboard({ showToast }: { showToast: (msg: string, type?: 'succes
           </motion.section>
         )}
       </main>
+
+      {/* School Students Modal */}
+      <AnimatePresence>
+        {selectedSchool && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              className="bg-white rounded-[32px] w-full max-w-md shadow-2xl flex flex-col max-h-[80vh]"
+            >
+              <div className="p-6 border-b border-slate-100 flex items-center justify-between flex-shrink-0">
+                <div>
+                  <h2 className="text-base font-black text-slate-900">{selectedSchool.school_name}</h2>
+                  <p className="text-[10px] text-slate-400 mt-0.5">{schoolStudents.length} student{schoolStudents.length !== 1 ? 's' : ''} enrolled</p>
+                </div>
+                <button onClick={() => setSelectedSchool(null)} className="p-2 hover:bg-slate-100 rounded-full transition-all">
+                  <X className="w-5 h-5 text-slate-400" />
+                </button>
+              </div>
+              <div className="overflow-y-auto flex-1">
+                {loadingStudents ? (
+                  <div className="flex items-center justify-center py-12">
+                    <Loader2 className="w-6 h-6 text-nigeria-green animate-spin" />
+                  </div>
+                ) : schoolStudents.length === 0 ? (
+                  <div className="py-12 text-center text-sm text-slate-400 italic">No students enrolled yet</div>
+                ) : (
+                  <div className="divide-y divide-slate-50">
+                    {schoolStudents.map((s) => {
+                      const hasActivePlan = s.expiry_date && new Date(s.expiry_date) > new Date();
+                      const hasTrial = s.trial_expires_at && new Date(s.trial_expires_at) > new Date();
+                      return (
+                        <div key={s.uid} className="px-6 py-4 flex items-center justify-between">
+                          <div className="flex items-center gap-3">
+                            <div className="w-8 h-8 rounded-full bg-purple-50 flex items-center justify-center flex-shrink-0">
+                              <span className="text-xs font-black text-purple-500">
+                                {(s.displayname || s.uid || '?')[0].toUpperCase()}
+                              </span>
+                            </div>
+                            <div>
+                              <p className="text-sm font-bold text-slate-800">{s.displayname || 'Unknown'}</p>
+                              <p className="text-[10px] text-slate-400 font-mono">{s.uid?.slice(0, 14)}…</p>
+                            </div>
+                          </div>
+                          <div className="text-right flex-shrink-0">
+                            <p className="text-sm font-black text-nigeria-green">{s.credits} cr</p>
+                            <span className={`text-[9px] font-black uppercase tracking-widest px-1.5 py-0.5 rounded-full ${
+                              hasActivePlan ? 'bg-green-100 text-green-600' :
+                              hasTrial ? 'bg-blue-100 text-blue-500' :
+                              'bg-red-50 text-red-400'
+                            }`}>
+                              {hasActivePlan ? 'Subscribed' : hasTrial ? 'Trial' : 'Expired'}
+                            </span>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }
@@ -1245,29 +1331,55 @@ function SchoolDashboard({ showToast }: { showToast: (msg: string, type?: 'succe
           )}
         </div>
 
-        {/* Activity Placeholder */}
+        {/* Student List */}
         <div className="bg-white rounded-[32px] border border-slate-200 shadow-sm overflow-hidden">
-          <div className="p-6 border-b border-slate-100">
-            <h3 className="text-sm font-black text-slate-900">Recent Activity</h3>
+          <div className="p-6 border-b border-slate-100 flex items-center justify-between">
+            <h3 className="text-sm font-black text-slate-900">Your Students</h3>
+            <span className="text-[10px] font-black text-slate-400 bg-slate-100 px-2 py-1 rounded-full">
+              {(data.students || []).length}
+            </span>
           </div>
-          <div className="p-6 space-y-4">
-            {[1, 2, 3].map((i) => (
-              <div key={i} className="flex items-center justify-between py-2 border-b border-slate-50 last:border-0">
-                <div className="flex items-center gap-3">
-                  <div className="w-8 h-8 bg-slate-100 rounded-full flex items-center justify-center">
-                    <Users className="w-4 h-4 text-slate-400" />
-                  </div>
-                  <div>
-                    <p className="text-xs font-bold text-slate-800">New Student Joined</p>
-                    <p className="text-[10px] text-slate-400">{i} hour{i > 1 ? 's' : ''} ago</p>
-                  </div>
-                </div>
-                <div className="text-right">
-                  <p className="text-xs font-black text-nigeria-green">+₦0</p>
-                </div>
+          {(data.students || []).length === 0 ? (
+            <div className="p-8 text-center">
+              <div className="w-12 h-12 bg-slate-100 rounded-full flex items-center justify-center mx-auto mb-3">
+                <Users className="w-6 h-6 text-slate-300" />
               </div>
-            ))}
-          </div>
+              <p className="text-sm font-bold text-slate-400">No students yet</p>
+              <p className="text-[10px] text-slate-300 mt-1">Share your school link to get students enrolled</p>
+            </div>
+          ) : (
+            <div className="divide-y divide-slate-50">
+              {(data.students || []).map((s: any) => {
+                const hasActivePlan = s.expiry_date && new Date(s.expiry_date) > new Date();
+                const hasTrial = s.trial_expires_at && new Date(s.trial_expires_at) > new Date();
+                return (
+                  <div key={s.uid} className="px-6 py-4 flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      <div className="w-8 h-8 rounded-full bg-blue-50 flex items-center justify-center flex-shrink-0">
+                        <span className="text-xs font-black text-blue-500">
+                          {(s.displayname || s.uid || '?')[0].toUpperCase()}
+                        </span>
+                      </div>
+                      <div>
+                        <p className="text-sm font-bold text-slate-800">{s.displayname || 'Unknown'}</p>
+                        <p className="text-[10px] text-slate-400 font-mono">{s.uid?.slice(0, 12)}…</p>
+                      </div>
+                    </div>
+                    <div className="text-right flex-shrink-0">
+                      <p className="text-sm font-black text-nigeria-green">{s.credits} cr</p>
+                      <span className={`text-[9px] font-black uppercase tracking-widest px-1.5 py-0.5 rounded-full ${
+                        hasActivePlan ? 'bg-green-100 text-green-600' :
+                        hasTrial ? 'bg-blue-100 text-blue-500' :
+                        'bg-red-50 text-red-400'
+                      }`}>
+                        {hasActivePlan ? 'Subscribed' : hasTrial ? 'Trial' : 'Expired'}
+                      </span>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
         </div>
       </main>
     </div>

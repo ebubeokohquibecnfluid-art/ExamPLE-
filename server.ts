@@ -702,15 +702,18 @@ app.post("/school-dashboard", async (req, res) => {
     if (!school) return res.status(404).json({ error: "School not found" });
     
     const withdrawals = await db.all("SELECT * FROM withdrawals WHERE school_id = ?", [school.school_id]);
-    
-    // Approximate active users as users who joined this school
+    const students = await db.all(
+      "SELECT uid, displayname, credits, trial_expires_at, expiry_date FROM users WHERE schoolId = ? ORDER BY trial_expires_at DESC",
+      [school.school_id]
+    );
     const usersRes = await db.get("SELECT COUNT(*) as count FROM users WHERE schoolId = ?", [school.school_id]);
 
     res.json({
       ...school,
       total_students: school.total_students || 0,
       active_users: usersRes?.count || 0,
-      withdrawals
+      withdrawals,
+      students
     });
   } catch (err) { res.status(500).json({ error: "Dashboard failed" }); }
 });
@@ -801,6 +804,17 @@ app.get("/admin/schools", authenticateAdmin, async (req, res) => {
     const schools = await db.all("SELECT * FROM schools");
     res.json(schools);
   } catch (err) { res.status(500).json({ error: "Schools failed" }); }
+});
+
+app.get("/admin/schools/:school_id/students", authenticateAdmin, async (req: any, res) => {
+  if (!db) return res.status(500).json({ error: "DB missing" });
+  try {
+    const students = await db.all(
+      "SELECT uid, displayname, credits, trial_expires_at, expiry_date FROM users WHERE schoolId = ? ORDER BY trial_expires_at DESC",
+      [req.params.school_id]
+    );
+    res.json(students);
+  } catch (err) { res.status(500).json({ error: "Failed to load students" }); }
 });
 
 app.get("/admin/withdrawals", authenticateAdmin, async (req, res) => {
