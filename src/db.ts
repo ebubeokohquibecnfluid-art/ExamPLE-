@@ -49,15 +49,23 @@ async function ensureSchema(): Promise<void> {
       password TEXT,
       referral_code TEXT UNIQUE,
       total_students INTEGER DEFAULT 0,
-      total_earnings REAL DEFAULT 0
+      total_earnings REAL DEFAULT 0,
+      bank_name TEXT,
+      bank_account_number TEXT,
+      bank_account_name TEXT
     );
+    ALTER TABLE schools ADD COLUMN IF NOT EXISTS bank_name TEXT;
+    ALTER TABLE schools ADD COLUMN IF NOT EXISTS bank_account_number TEXT;
+    ALTER TABLE schools ADD COLUMN IF NOT EXISTS bank_account_name TEXT;
     CREATE TABLE IF NOT EXISTS withdrawals (
       id TEXT PRIMARY KEY,
       school_id TEXT,
       amount INTEGER,
       status TEXT DEFAULT 'pending',
-      timestamp TEXT
+      timestamp TEXT,
+      approved_at TEXT
     );
+    ALTER TABLE withdrawals ADD COLUMN IF NOT EXISTS approved_at TEXT;
     CREATE TABLE IF NOT EXISTS activity (
       id SERIAL PRIMARY KEY,
       type TEXT,

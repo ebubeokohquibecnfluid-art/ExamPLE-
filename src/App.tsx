@@ -506,23 +506,34 @@ function AdminDashboard({ showToast }: { showToast: (msg: string, type?: 'succes
                           <td className="px-6 py-4">
                             <p className="text-sm font-bold text-slate-800">{w.school_name}</p>
                             <p className="text-[10px] text-slate-400">{new Date(w.timestamp).toLocaleDateString()}</p>
+                            {w.bank_account_number ? (
+                              <div className="mt-1.5 bg-blue-50 rounded-xl px-3 py-2 space-y-0.5">
+                                <p className="text-[10px] font-black text-blue-700 uppercase tracking-widest">Transfer To</p>
+                                <p className="text-xs font-bold text-slate-800">{w.bank_account_name}</p>
+                                <p className="text-[10px] text-slate-600">{w.bank_name} · {w.bank_account_number}</p>
+                              </div>
+                            ) : (
+                              <p className="text-[10px] text-orange-500 font-bold mt-1">No bank details on file</p>
+                            )}
                           </td>
                           <td className="px-6 py-4 text-sm font-black text-slate-900">₦{w.amount.toLocaleString()}</td>
                           <td className="px-6 py-4">
-                            <span className={cn(
-                              "px-2 py-1 rounded-full text-[10px] font-black uppercase",
-                              w.status === 'paid' ? "bg-green-100 text-green-700" : "bg-orange-100 text-orange-700"
-                            )}>
-                              {w.status}
-                            </span>
+                            {w.status === 'approved' || w.status === 'paid' ? (
+                              <div>
+                                <span className="px-2 py-1 rounded-full text-[10px] font-black uppercase bg-green-100 text-green-700 block w-fit">Approved</span>
+                                {w.approved_at && <p className="text-[9px] text-slate-400 mt-1">{new Date(w.approved_at).toLocaleDateString()}</p>}
+                              </div>
+                            ) : (
+                              <span className="px-2 py-1 rounded-full text-[10px] font-black uppercase bg-orange-100 text-orange-700">Pending</span>
+                            )}
                           </td>
                           <td className="px-6 py-4 text-right">
                             {w.status === 'pending' && (
-                              <button 
+                              <button
                                 onClick={() => markAsPaid(w.id)}
                                 className="bg-nigeria-green text-white px-4 py-2 rounded-xl text-xs font-bold hover:bg-green-700 transition-all shadow-md active:scale-95"
                               >
-                                Mark Paid
+                                Approve Transfer
                               </button>
                             )}
                           </td>
@@ -603,6 +614,11 @@ function SchoolDashboard({ showToast }: { showToast: (msg: string, type?: 'succe
   const [resetCode, setResetCode] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [resetting, setResetting] = useState(false);
+  const [bankName, setBankName] = useState('');
+  const [bankAccountNumber, setBankAccountNumber] = useState('');
+  const [bankAccountName, setBankAccountName] = useState('');
+  const [savingBank, setSavingBank] = useState(false);
+  const [showBankForm, setShowBankForm] = useState(false);
 
   const fetchDashboard = async () => {
     try {
@@ -647,6 +663,7 @@ function SchoolDashboard({ showToast }: { showToast: (msg: string, type?: 'succe
       if (res.ok) {
         setIsLoggedIn(true);
         localStorage.setItem(`school_auth_${school_slug}`, 'true');
+        localStorage.setItem(`school_pwd_${school_slug}`, password);
         setLoading(true);
         fetchDashboard();
       } else {
@@ -718,6 +735,31 @@ function SchoolDashboard({ showToast }: { showToast: (msg: string, type?: 'succe
     } finally {
       setWithdrawing(false);
     }
+  };
+
+  const handleSaveBankDetails = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!bankName.trim() || !bankAccountNumber.trim() || !bankAccountName.trim()) {
+      showToast("All bank fields are required", "error"); return;
+    }
+    setSavingBank(true);
+    try {
+      const savedPwd = localStorage.getItem(`school_pwd_${school_slug}`) || '';
+      const res = await fetch(`${API_BASE_URL}/api/schools/save-bank-details`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ school_slug, password: savedPwd, bank_name: bankName, bank_account_number: bankAccountNumber, bank_account_name: bankAccountName })
+      });
+      const result = await res.json();
+      if (res.ok) {
+        showToast("Bank details saved!", "success");
+        setShowBankForm(false);
+        fetchDashboard();
+      } else {
+        showToast(result.error || "Failed to save bank details", "error");
+      }
+    } catch { showToast("Connection error", "error"); }
+    finally { setSavingBank(false); }
   };
 
   if (loading) {
@@ -947,6 +989,48 @@ function SchoolDashboard({ showToast }: { showToast: (msg: string, type?: 'succe
 
         {/* Withdrawal Section */}
         <div className="bg-white p-6 rounded-[32px] border border-slate-200 shadow-sm space-y-6">
+          {/* Bank Account Details */}
+          <div className="border border-slate-100 rounded-2xl p-4 bg-slate-50">
+            <div className="flex items-center justify-between mb-3">
+              <div>
+                <p className="text-xs font-black text-slate-700">Bank Account</p>
+                {data.bank_account_number ? (
+                  <p className="text-[10px] text-slate-500 mt-0.5">
+                    {data.bank_account_name} · {data.bank_name} · ····{data.bank_account_number?.slice(-4)}
+                  </p>
+                ) : (
+                  <p className="text-[10px] text-orange-500 font-bold mt-0.5">No bank account added yet</p>
+                )}
+              </div>
+              <button
+                onClick={() => {
+                  setShowBankForm(f => !f);
+                  if (data.bank_name) { setBankName(data.bank_name); setBankAccountNumber(data.bank_account_number); setBankAccountName(data.bank_account_name); }
+                }}
+                className="text-[10px] font-black text-nigeria-green uppercase tracking-widest hover:underline"
+              >
+                {showBankForm ? 'Cancel' : data.bank_account_number ? 'Edit' : 'Add'}
+              </button>
+            </div>
+            {showBankForm && (
+              <form onSubmit={handleSaveBankDetails} className="space-y-3 mt-3 pt-3 border-t border-slate-200">
+                <input type="text" placeholder="Bank Name (e.g. First Bank)" value={bankName}
+                  onChange={e => setBankName(e.target.value)} required
+                  className="w-full bg-white border border-slate-200 rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-nigeria-green/20 focus:border-nigeria-green outline-none" />
+                <input type="text" placeholder="Account Number" value={bankAccountNumber}
+                  onChange={e => setBankAccountNumber(e.target.value)} required maxLength={10}
+                  className="w-full bg-white border border-slate-200 rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-nigeria-green/20 focus:border-nigeria-green outline-none font-mono" />
+                <input type="text" placeholder="Account Name" value={bankAccountName}
+                  onChange={e => setBankAccountName(e.target.value)} required
+                  className="w-full bg-white border border-slate-200 rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-nigeria-green/20 focus:border-nigeria-green outline-none" />
+                <button type="submit" disabled={savingBank}
+                  className="w-full bg-nigeria-green text-white py-3 rounded-xl font-black text-sm hover:bg-green-700 transition-all disabled:opacity-50 active:scale-95">
+                  {savingBank ? <Loader2 className="w-4 h-4 animate-spin mx-auto" /> : "Save Bank Details"}
+                </button>
+              </form>
+            )}
+          </div>
+
           <div className="flex items-center justify-between">
             <h3 className="text-sm font-black text-slate-900">Withdrawal</h3>
             <div className="text-right">
@@ -955,44 +1039,49 @@ function SchoolDashboard({ showToast }: { showToast: (msg: string, type?: 'succe
             </div>
           </div>
 
-          <form onSubmit={handleWithdrawal} className="space-y-4">
-            <div className="space-y-2">
-              <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Amount (Min ₦5,000)</label>
-              <div className="relative">
-                <span className="absolute left-4 top-1/2 -translate-y-1/2 font-bold text-slate-400">₦</span>
-                <input 
-                  type="number" 
-                  placeholder="5000" 
-                  value={withdrawalAmount}
-                  onChange={(e) => setWithdrawalAmount(e.target.value)}
-                  className="w-full bg-slate-50 border border-slate-200 rounded-2xl pl-8 pr-4 py-4 text-sm focus:ring-2 focus:ring-nigeria-green/20 focus:border-nigeria-green outline-none transition-all"
-                />
-              </div>
+          {!data.bank_account_number ? (
+            <div className="bg-orange-50 border border-orange-200 rounded-2xl p-4 text-center">
+              <p className="text-xs font-bold text-orange-700">Add your bank account details above before requesting a withdrawal.</p>
             </div>
-            <button 
-              type="submit" 
-              disabled={withdrawing || !withdrawalAmount || Number(withdrawalAmount) < 5000}
-              className="w-full bg-nigeria-green text-white py-4 rounded-2xl font-black text-sm shadow-lg shadow-green-900/10 hover:bg-green-700 transition-all disabled:bg-slate-200 disabled:shadow-none active:scale-95"
-            >
-              {withdrawing ? <Loader2 className="w-4 h-4 animate-spin mx-auto" /> : "Request Withdrawal"}
-            </button>
-          </form>
+          ) : (
+            <form onSubmit={handleWithdrawal} className="space-y-4">
+              <div className="space-y-2">
+                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Amount (Min ₦5,000)</label>
+                <div className="relative">
+                  <span className="absolute left-4 top-1/2 -translate-y-1/2 font-bold text-slate-400">₦</span>
+                  <input
+                    type="number" placeholder="5000" value={withdrawalAmount}
+                    onChange={(e) => setWithdrawalAmount(e.target.value)}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-2xl pl-8 pr-4 py-4 text-sm focus:ring-2 focus:ring-nigeria-green/20 focus:border-nigeria-green outline-none transition-all"
+                  />
+                </div>
+              </div>
+              <button type="submit" disabled={withdrawing || !withdrawalAmount || Number(withdrawalAmount) < 5000}
+                className="w-full bg-nigeria-green text-white py-4 rounded-2xl font-black text-sm shadow-lg shadow-green-900/10 hover:bg-green-700 transition-all disabled:bg-slate-200 disabled:shadow-none active:scale-95">
+                {withdrawing ? <Loader2 className="w-4 h-4 animate-spin mx-auto" /> : "Request Withdrawal"}
+              </button>
+            </form>
+          )}
 
           {data.withdrawals && data.withdrawals.length > 0 && (
             <div className="pt-6 border-t border-slate-100">
               <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-4">Withdrawal History</h4>
               <div className="space-y-3">
                 {data.withdrawals.map((w: any) => (
-                  <div key={w.id} className="flex items-center justify-between py-2">
+                  <div key={w.id} className="flex items-start justify-between py-2">
                     <div>
                       <p className="text-xs font-bold text-slate-800">₦{w.amount.toLocaleString()}</p>
                       <p className="text-[10px] text-slate-400">{new Date(w.timestamp).toLocaleDateString()}</p>
                     </div>
-                    <div className={cn(
-                      "px-3 py-1 rounded-full text-[10px] font-black uppercase",
-                      w.status === 'paid' ? "bg-green-100 text-green-700" : "bg-orange-100 text-orange-700"
-                    )}>
-                      {w.status}
+                    <div>
+                      {w.status === 'approved' || w.status === 'paid' ? (
+                        <div className="text-right">
+                          <span className="px-3 py-1 rounded-full text-[10px] font-black uppercase bg-green-100 text-green-700 block">Approved</span>
+                          <p className="text-[9px] text-green-600 mt-1">Funds within 48hrs</p>
+                        </div>
+                      ) : (
+                        <span className="px-3 py-1 rounded-full text-[10px] font-black uppercase bg-orange-100 text-orange-700">Pending</span>
+                      )}
                     </div>
                   </div>
                 ))}

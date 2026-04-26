@@ -638,9 +638,12 @@ app.post("/request-withdrawal", async (req, res) => {
   const { school_id, amount } = req.body;
   if (!db || !school_id || !amount) return res.status(400).json({ error: "Missing data" });
   try {
-    const school = await db.get("SELECT total_earnings FROM schools WHERE school_id = ?", [school_id]);
+    const school = await db.get("SELECT total_earnings, bank_name, bank_account_number, bank_account_name FROM schools WHERE school_id = ?", [school_id]);
     if (!school || school.total_earnings < amount) {
       return res.status(400).json({ error: "Insufficient balance" });
+    }
+    if (!school.bank_name || !school.bank_account_number || !school.bank_account_name) {
+      return res.status(400).json({ error: "NO_BANK_DETAILS", message: "Please add your bank account details before requesting a withdrawal." });
     }
     
     const withdrawal_id = `wd_${Math.random().toString(36).substring(2, 9)}`;
@@ -722,14 +725,17 @@ app.get("/admin/schools", authenticateAdmin, async (req, res) => {
 app.get("/admin/withdrawals", authenticateAdmin, async (req, res) => {
   if (!db) return res.status(500).json({ error: "DB missing" });
   try {
-    const withdrawals = await db.all("SELECT * FROM withdrawals");
+    const withdrawals = await db.all("SELECT * FROM withdrawals ORDER BY timestamp DESC");
     const schools = await db.all("SELECT * FROM schools");
     
     const enrichedWithdrawals = withdrawals.map(w => {
       const school = schools.find(s => s.school_id === w.school_id);
       return {
         ...w,
-        school_name: school ? school.school_name : "Unknown School"
+        school_name: school ? school.school_name : "Unknown School",
+        bank_name: school?.bank_name || null,
+        bank_account_number: school?.bank_account_number || null,
+        bank_account_name: school?.bank_account_name || null,
       };
     });
     
@@ -764,9 +770,30 @@ app.post("/api/withdrawals/mark-paid", authenticateAdmin, async (req, res) => {
   const { withdrawal_id } = req.body;
   if (!db || !withdrawal_id) return res.status(400).json({ error: "Missing data" });
   try {
-    await db.run("UPDATE withdrawals SET status = 'paid' WHERE id = ?", [withdrawal_id]);
+    await db.run(
+      "UPDATE withdrawals SET status = 'approved', approved_at = ? WHERE id = ?",
+      [new Date().toISOString(), withdrawal_id]
+    );
     res.json({ success: true });
-  } catch (err) { res.status(500).json({ error: "Mark paid failed" }); }
+  } catch (err) { res.status(500).json({ error: "Approval failed" }); }
+});
+
+// Save school bank account details
+app.post("/api/schools/save-bank-details", async (req, res) => {
+  const { school_slug, password, bank_name, bank_account_number, bank_account_name } = req.body;
+  if (!db || !school_slug || !password || !bank_name || !bank_account_number || !bank_account_name) {
+    return res.status(400).json({ error: "All bank details are required" });
+  }
+  try {
+    const school = await db.get("SELECT * FROM schools WHERE school_slug = ?", [school_slug]);
+    if (!school) return res.status(404).json({ error: "School not found" });
+    if (school.password !== password) return res.status(401).json({ error: "Invalid password" });
+    await db.run(
+      "UPDATE schools SET bank_name = ?, bank_account_number = ?, bank_account_name = ? WHERE school_slug = ?",
+      [bank_name.trim(), bank_account_number.trim(), bank_account_name.trim(), school_slug]
+    );
+    res.json({ success: true, message: "Bank details saved successfully" });
+  } catch (err) { res.status(500).json({ error: "Failed to save bank details" }); }
 });
 
 // --- SUPPORT CHAT ENDPOINT ---
