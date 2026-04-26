@@ -57,6 +57,11 @@ async function ensureSchema(): Promise<void> {
     ALTER TABLE schools ADD COLUMN IF NOT EXISTS bank_name TEXT;
     ALTER TABLE schools ADD COLUMN IF NOT EXISTS bank_account_number TEXT;
     ALTER TABLE schools ADD COLUMN IF NOT EXISTS bank_account_name TEXT;
+    ALTER TABLE schools ADD COLUMN IF NOT EXISTS primary_color TEXT DEFAULT '#008751';
+    ALTER TABLE schools ADD COLUMN IF NOT EXISTS logo_url TEXT;
+    ALTER TABLE schools ADD COLUMN IF NOT EXISTS tagline TEXT;
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS is_deleted INTEGER DEFAULT 0;
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS deleted_at TEXT;
     CREATE TABLE IF NOT EXISTS withdrawals (
       id TEXT PRIMARY KEY,
       school_id TEXT,

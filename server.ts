@@ -151,7 +151,16 @@ app.post("/api/auth/simple", async (req, res) => {
     } else if (displayName && !user.displayName) {
       await db.run("UPDATE users SET displayName = ? WHERE uid = ?", [displayName, uid]);
     }
-    res.json(await db.get("SELECT * FROM users WHERE uid = ?", [uid]));
+    const fresh = await db.get("SELECT * FROM users WHERE uid = ?", [uid]);
+    // Attach school customisation so the frontend can theme itself
+    let schoolMeta = null;
+    if (fresh && fresh.schoolId) {
+      schoolMeta = await db.get(
+        "SELECT school_name, school_slug, primary_color, logo_url, tagline FROM schools WHERE school_id = ?",
+        [fresh.schoolId]
+      );
+    }
+    res.json({ ...fresh, school: schoolMeta });
   } catch (err) { res.status(500).json({ error: "Auth failed" }); }
 });
 
@@ -595,10 +604,62 @@ app.get("/api/schools/by-slug/:slug", async (req, res) => {
   const { slug } = req.params;
   if (!db) return res.status(500).json({ error: "DB missing" });
   try {
-    const school = await db.get("SELECT school_id, school_name, school_slug, referral_code FROM schools WHERE school_slug = ?", [slug]);
+    const school = await db.get(
+      "SELECT school_id, school_name, school_slug, referral_code, primary_color, logo_url, tagline FROM schools WHERE school_slug = ?",
+      [slug]
+    );
     if (school) res.json(school);
     else res.status(404).json({ error: "School not found" });
   } catch (err) { res.status(500).json({ error: "Query failed" }); }
+});
+
+// Direct student→school link (replaces WhatsApp JOIN hack)
+app.post("/api/schools/link-student", async (req, res) => {
+  const { uid, school_id } = req.body;
+  if (!db || !uid || !school_id) return res.status(400).json({ error: "Missing data" });
+  try {
+    const school = await db.get("SELECT school_id, school_name FROM schools WHERE school_id = ?", [school_id]);
+    if (!school) return res.status(404).json({ error: "School not found" });
+    await db.run("UPDATE users SET schoolId = ? WHERE uid = ?", [school_id, uid]);
+    await db.run("UPDATE schools SET total_students = (SELECT COUNT(*) FROM users WHERE schoolId = ?) WHERE school_id = ?", [school_id, school_id]);
+    res.json({ success: true, school_name: school.school_name });
+  } catch (err) { res.status(500).json({ error: "Link failed" }); }
+});
+
+// Save school customisation (color, logo, tagline)
+app.post("/api/schools/save-customization", async (req, res) => {
+  const { school_slug, password, primary_color, logo_url, tagline } = req.body;
+  if (!db || !school_slug || !password) return res.status(400).json({ error: "Missing data" });
+  try {
+    const school = await db.get("SELECT * FROM schools WHERE school_slug = ?", [school_slug]);
+    if (!school) return res.status(404).json({ error: "School not found" });
+    if (school.password !== password) return res.status(401).json({ error: "Invalid password" });
+    await db.run(
+      "UPDATE schools SET primary_color = ?, logo_url = ?, tagline = ? WHERE school_slug = ?",
+      [primary_color || '#008751', logo_url || null, tagline || null, school_slug]
+    );
+    res.json({ success: true });
+  } catch (err) { res.status(500).json({ error: "Customisation save failed" }); }
+});
+
+// Account deletion
+app.post("/api/account/delete", async (req, res) => {
+  const { uid, type } = req.body; // type: 'temporary' | 'permanent'
+  if (!db || !uid || !type) return res.status(400).json({ error: "Missing data" });
+  try {
+    const user = await db.get("SELECT uid, displayname FROM users WHERE uid = ?", [uid]);
+    if (!user) return res.status(404).json({ error: "User not found" });
+    if (type === 'permanent') {
+      await db.run("DELETE FROM users WHERE uid = ?", [uid]);
+      await db.run("INSERT INTO activity (type, details, timestamp) VALUES (?, ?, ?)", [
+        'account_deleted', JSON.stringify({ uid, displayName: user.displayname, type: 'permanent' }), new Date().toISOString()
+      ]);
+      return res.json({ success: true, message: "Account permanently deleted." });
+    } else {
+      await db.run("UPDATE users SET is_deleted = 1, deleted_at = ? WHERE uid = ?", [new Date().toISOString(), uid]);
+      return res.json({ success: true, message: "Account temporarily deactivated. Contact support to restore." });
+    }
+  } catch (err) { res.status(500).json({ error: "Deletion failed" }); }
 });
 
 app.post("/school-login", async (req, res) => {

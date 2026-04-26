@@ -46,7 +46,8 @@ import {
   Award,
   ChevronDown,
   Flame,
-  Zap
+  Zap,
+  Trash2
 } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import { BrowserRouter, Routes, Route, useParams, useNavigate, Link } from 'react-router-dom';
@@ -70,6 +71,13 @@ interface UserProfile {
   role?: 'admin' | 'user';
   expiry_date?: string;
   trial_expires_at?: string;
+  school?: {
+    school_name: string;
+    school_slug: string;
+    primary_color?: string;
+    logo_url?: string;
+    tagline?: string;
+  };
 }
 
 // --- API CONFIGURATION ---
@@ -619,6 +627,11 @@ function SchoolDashboard({ showToast }: { showToast: (msg: string, type?: 'succe
   const [bankAccountName, setBankAccountName] = useState('');
   const [savingBank, setSavingBank] = useState(false);
   const [showBankForm, setShowBankForm] = useState(false);
+  const [customColor, setCustomColor] = useState('#008751');
+  const [customLogo, setCustomLogo] = useState('');
+  const [customTagline, setCustomTagline] = useState('');
+  const [savingCustom, setSavingCustom] = useState(false);
+  const [showCustomForm, setShowCustomForm] = useState(false);
 
   const fetchDashboard = async () => {
     try {
@@ -650,6 +663,14 @@ function SchoolDashboard({ showToast }: { showToast: (msg: string, type?: 'succe
       setLoading(false);
     }
   }, [school_slug]);
+
+  useEffect(() => {
+    if (data) {
+      setCustomColor(data.primary_color || '#008751');
+      setCustomLogo(data.logo_url || '');
+      setCustomTagline(data.tagline || '');
+    }
+  }, [data]);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -760,6 +781,28 @@ function SchoolDashboard({ showToast }: { showToast: (msg: string, type?: 'succe
       }
     } catch { showToast("Connection error", "error"); }
     finally { setSavingBank(false); }
+  };
+
+  const handleSaveCustomization = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setSavingCustom(true);
+    try {
+      const savedPwd = localStorage.getItem(`school_pwd_${school_slug}`) || '';
+      const res = await fetch(`${API_BASE_URL}/api/schools/save-customization`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ school_slug, password: savedPwd, primary_color: customColor, logo_url: customLogo, tagline: customTagline })
+      });
+      const result = await res.json();
+      if (res.ok) {
+        showToast("Customisation saved!", "success");
+        setShowCustomForm(false);
+        fetchDashboard();
+      } else {
+        showToast(result.error || "Failed to save customisation", "error");
+      }
+    } catch { showToast("Connection error", "error"); }
+    finally { setSavingCustom(false); }
   };
 
   if (loading) {
@@ -1090,6 +1133,78 @@ function SchoolDashboard({ showToast }: { showToast: (msg: string, type?: 'succe
           )}
         </div>
 
+        {/* School Customisation */}
+        <div className="bg-white p-6 rounded-[32px] border border-slate-200 shadow-sm space-y-4">
+          <div className="flex items-center justify-between">
+            <div>
+              <h3 className="text-sm font-black text-slate-900">School Branding</h3>
+              <p className="text-[10px] text-slate-400 mt-0.5">Customise how students see your school</p>
+            </div>
+            <button
+              onClick={() => setShowCustomForm(f => !f)}
+              className="text-[10px] font-black text-nigeria-green uppercase tracking-widest hover:underline"
+            >
+              {showCustomForm ? 'Cancel' : 'Edit'}
+            </button>
+          </div>
+          {!showCustomForm ? (
+            <div className="flex items-center gap-3 bg-slate-50 rounded-2xl p-4">
+              <div className="w-8 h-8 rounded-xl flex-shrink-0" style={{ backgroundColor: customColor || '#008751' }} />
+              <div className="min-w-0">
+                {customLogo && <p className="text-[10px] text-slate-500 truncate">Logo: {customLogo}</p>}
+                {customTagline && <p className="text-xs font-bold text-slate-700 truncate">{customTagline}</p>}
+                {!customTagline && !customLogo && <p className="text-[10px] text-slate-400 italic">No custom branding set</p>}
+              </div>
+            </div>
+          ) : (
+            <form onSubmit={handleSaveCustomization} className="space-y-4">
+              <div className="space-y-1">
+                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Brand Colour</label>
+                <div className="flex items-center gap-3">
+                  <input
+                    type="color"
+                    value={customColor}
+                    onChange={e => setCustomColor(e.target.value)}
+                    className="w-12 h-10 rounded-xl border border-slate-200 cursor-pointer p-1 bg-white"
+                  />
+                  <input
+                    type="text"
+                    value={customColor}
+                    onChange={e => setCustomColor(e.target.value)}
+                    placeholder="#008751"
+                    className="flex-1 bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-sm font-mono focus:ring-2 focus:ring-nigeria-green/20 focus:border-nigeria-green outline-none"
+                  />
+                </div>
+              </div>
+              <div className="space-y-1">
+                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Logo URL (optional)</label>
+                <input
+                  type="url"
+                  placeholder="https://yourschool.com/logo.png"
+                  value={customLogo}
+                  onChange={e => setCustomLogo(e.target.value)}
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-nigeria-green/20 focus:border-nigeria-green outline-none"
+                />
+              </div>
+              <div className="space-y-1">
+                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Tagline (optional)</label>
+                <input
+                  type="text"
+                  placeholder="Empowering students across Nigeria"
+                  value={customTagline}
+                  onChange={e => setCustomTagline(e.target.value)}
+                  maxLength={80}
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-nigeria-green/20 focus:border-nigeria-green outline-none"
+                />
+              </div>
+              <button type="submit" disabled={savingCustom}
+                className="w-full bg-nigeria-green text-white py-3 rounded-xl font-black text-sm hover:bg-green-700 transition-all disabled:opacity-50 active:scale-95">
+                {savingCustom ? <Loader2 className="w-4 h-4 animate-spin mx-auto" /> : "Save Branding"}
+              </button>
+            </form>
+          )}
+        </div>
+
         {/* Activity Placeholder */}
         <div className="bg-white rounded-[32px] border border-slate-200 shadow-sm overflow-hidden">
           <div className="p-6 border-b border-slate-100">
@@ -1151,6 +1266,10 @@ function MainApp({ user, profile, onLogin, onLogout, refreshProfile, showToast, 
   const [schoolCodeInput, setSchoolCodeInput] = useState('');
   const [schoolNameInput, setSchoolNameInput] = useState('');
   const [schoolPasswordInput, setSchoolPasswordInput] = useState('');
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [deleteType, setDeleteType] = useState<'temporary' | 'permanent'>('temporary');
+  const [deleteConfirmText, setDeleteConfirmText] = useState('');
+  const [deletingAccount, setDeletingAccount] = useState(false);
 
   const [isRecording, setIsRecording] = useState(false);
   const [transcribing, setTranscribing] = useState(false);
@@ -1329,13 +1448,13 @@ function MainApp({ user, profile, onLogin, onLogout, refreshProfile, showToast, 
 
   // Automatic school joining
   useEffect(() => {
-    if (schoolId && userId !== 'guest' && profile && profile.schoolId !== schoolId) {
+    if (schoolId && userId && userId !== 'guest' && profile && profile.schoolId !== schoolId) {
       const autoJoin = async () => {
         try {
-          const res = await fetch(`${API_BASE_URL}/api/whatsapp/message`, {
+          const res = await fetch(`${API_BASE_URL}/api/schools/link-student`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ user_id: userId, user_message: `JOIN ${schoolId}` })
+            body: JSON.stringify({ uid: userId, school_id: schoolId })
           });
           if (res.ok) {
             refreshProfile();
@@ -1704,6 +1823,38 @@ function MainApp({ user, profile, onLogin, onLogout, refreshProfile, showToast, 
     }
   };
 
+  const handleDeleteAccount = async () => {
+    if (!user) return;
+    if (deleteType === 'permanent' && deleteConfirmText !== 'DELETE') {
+      showToast("Type DELETE to confirm permanent deletion", "error");
+      return;
+    }
+    setDeletingAccount(true);
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/account/delete`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ uid: user.uid, type: deleteType })
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setShowDeleteModal(false);
+        setShowSettings(false);
+        showToast(deleteType === 'permanent' ? "Account permanently deleted." : "Account deactivated. You can reactivate by logging in.", "info");
+        localStorage.removeItem('exam_uid');
+        localStorage.removeItem('exam_user');
+        onLogout();
+      } else {
+        showToast(data.error || "Failed to delete account.", "error");
+      }
+    } catch (err) {
+      console.error("Delete account error:", err);
+      showToast("Failed to delete account.", "error");
+    } finally {
+      setDeletingAccount(false);
+    }
+  };
+
   // ── EXAM HANDLERS ──
   const startExam = async (forceMode?: 'similar' | 'simulate') => {
     if (!user) { onLogin(); return; }
@@ -1786,15 +1937,29 @@ function MainApp({ user, profile, onLogin, onLogout, refreshProfile, showToast, 
   return (
     <div className="flex flex-col h-screen bg-[#F0F2F5] font-sans overflow-hidden">
       {/* Header */}
-      <header className="bg-nigeria-green text-white px-4 py-3 flex items-center justify-between shadow-md z-20">
+      <header
+        className="text-white px-4 py-3 flex items-center justify-between shadow-md z-20"
+        style={{ backgroundColor: profile?.school?.primary_color || '#008751' }}
+      >
         <div className="flex items-center gap-3">
-          <div className="bg-white/20 p-2 rounded-full">
-            <GraduationCap className="w-6 h-6" />
-          </div>
+          {profile?.school?.logo_url ? (
+            <img
+              src={profile.school.logo_url}
+              alt={profile.school.school_name}
+              className="w-10 h-10 rounded-full object-cover bg-white/20"
+              onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
+            />
+          ) : (
+            <div className="bg-white/20 p-2 rounded-full">
+              <GraduationCap className="w-6 h-6" />
+            </div>
+          )}
           <div>
-            <h1 className="text-lg font-bold leading-tight">ExamPLE</h1>
+            <h1 className="text-lg font-bold leading-tight">
+              {profile?.school?.school_name || 'ExamPLE'}
+            </h1>
             <p className="text-[10px] opacity-90 font-medium uppercase tracking-wider">
-              {schoolName ? `Powered by ${schoolName} 🏫` : "ExamPLE AI Tutor 🎓"}
+              {profile?.school?.tagline || (schoolName ? `Powered by ${schoolName}` : 'AI Tutor')}
             </p>
           </div>
         </div>
@@ -2683,6 +2848,44 @@ function MainApp({ user, profile, onLogin, onLogout, refreshProfile, showToast, 
                     <ChevronRight className="w-4 h-4 text-slate-300" />
                   </button>
                 </div>
+
+                {user && (
+                  <div className="pt-6 border-t border-slate-100">
+                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1 mb-3">Danger Zone</p>
+                    <div className="space-y-2">
+                      <button
+                        onClick={() => { setDeleteType('temporary'); setDeleteConfirmText(''); setShowDeleteModal(true); }}
+                        className="w-full flex items-center justify-between p-4 bg-orange-50 rounded-2xl hover:bg-orange-100 transition-all group"
+                      >
+                        <div className="flex items-center gap-3">
+                          <div className="bg-white p-2 rounded-xl shadow-sm">
+                            <Pause className="w-5 h-5 text-orange-500" />
+                          </div>
+                          <div className="text-left">
+                            <p className="text-sm font-bold text-slate-800">Deactivate Account</p>
+                            <p className="text-[10px] text-slate-500">Temporarily hide your account</p>
+                          </div>
+                        </div>
+                        <ChevronRight className="w-4 h-4 text-slate-300" />
+                      </button>
+                      <button
+                        onClick={() => { setDeleteType('permanent'); setDeleteConfirmText(''); setShowDeleteModal(true); }}
+                        className="w-full flex items-center justify-between p-4 bg-red-50 rounded-2xl hover:bg-red-100 transition-all group"
+                      >
+                        <div className="flex items-center gap-3">
+                          <div className="bg-white p-2 rounded-xl shadow-sm">
+                            <Trash2 className="w-5 h-5 text-red-500" />
+                          </div>
+                          <div className="text-left">
+                            <p className="text-sm font-bold text-slate-800">Delete Account</p>
+                            <p className="text-[10px] text-slate-500">Permanently erase all your data</p>
+                          </div>
+                        </div>
+                        <ChevronRight className="w-4 h-4 text-slate-300" />
+                      </button>
+                    </div>
+                  </div>
+                )}
               </div>
             </motion.div>
           </div>
@@ -2796,6 +2999,59 @@ function MainApp({ user, profile, onLogin, onLogout, refreshProfile, showToast, 
                   className="w-full bg-slate-100 text-slate-700 py-4 rounded-2xl font-black text-lg hover:bg-slate-200 transition-all"
                 >
                   Go to Student App
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+
+        {showDeleteModal && (
+          <div className="fixed inset-0 z-[120] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.9 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.9 }}
+              className="bg-white rounded-[40px] p-8 max-w-sm w-full shadow-2xl"
+            >
+              <div className={`w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4 ${deleteType === 'permanent' ? 'bg-red-100' : 'bg-orange-100'}`}>
+                {deleteType === 'permanent' ? <Trash2 className="w-8 h-8 text-red-500" /> : <Pause className="w-8 h-8 text-orange-500" />}
+              </div>
+              <h2 className="text-xl font-black text-slate-900 text-center mb-1">
+                {deleteType === 'permanent' ? 'Delete Account' : 'Deactivate Account'}
+              </h2>
+              <p className="text-sm text-slate-500 text-center mb-6">
+                {deleteType === 'permanent'
+                  ? 'This will permanently erase all your data and cannot be undone.'
+                  : 'Your account will be hidden. You can reactivate it by logging back in.'}
+              </p>
+              {deleteType === 'permanent' && (
+                <div className="mb-4">
+                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1 block mb-2">
+                    Type DELETE to confirm
+                  </label>
+                  <input
+                    type="text"
+                    value={deleteConfirmText}
+                    onChange={(e) => setDeleteConfirmText(e.target.value)}
+                    placeholder="DELETE"
+                    className="w-full bg-slate-50 border border-red-200 rounded-2xl px-4 py-3 text-sm focus:ring-2 focus:ring-red-200 focus:border-red-400 outline-none transition-all font-mono"
+                  />
+                </div>
+              )}
+              <div className="flex gap-3">
+                <button
+                  onClick={() => setShowDeleteModal(false)}
+                  className="flex-1 py-3 rounded-2xl font-bold text-sm bg-slate-100 text-slate-700 hover:bg-slate-200 transition-all"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleDeleteAccount}
+                  disabled={deletingAccount || (deleteType === 'permanent' && deleteConfirmText !== 'DELETE')}
+                  className={`flex-1 py-3 rounded-2xl font-bold text-sm text-white transition-all disabled:opacity-40 flex items-center justify-center gap-2 ${deleteType === 'permanent' ? 'bg-red-500 hover:bg-red-600' : 'bg-orange-500 hover:bg-orange-600'}`}
+                >
+                  {deletingAccount ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
+                  {deleteType === 'permanent' ? 'Delete Forever' : 'Deactivate'}
                 </button>
               </div>
             </motion.div>
