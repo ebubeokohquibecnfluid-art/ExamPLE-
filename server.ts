@@ -5,7 +5,6 @@ import axios from "axios";
 import cors from "cors";
 import multer from "multer";
 import { GoogleGenAI, Modality } from "@google/genai";
-import { TextToSpeechClient } from "@google-cloud/text-to-speech";
 import { getDb } from "./src/db.js";
 
 const app = express();
@@ -68,7 +67,6 @@ const apiKey = (process.env.REAL_GEMINI_KEY || process.env.GEMINI_API_KEY || "")
 if (!apiKey) console.error("❌ Missing Gemini API Key");
 
 const ai = new GoogleGenAI({ apiKey });
-const ttsClient = new TextToSpeechClient();
 
 const PRIMARY_MODEL = "gemini-2.5-flash";
 const FALLBACK_MODEL = "gemini-2.5-flash-lite";
@@ -375,28 +373,10 @@ app.post("/get-audio", async (req, res) => {
       if (credits < 2) return res.status(403).json({ error: "Not enough credits for audio" });
       await db.run("UPDATE users SET credits = GREATEST(0, credits - 2) WHERE uid = ?", [user_id]);
     }
-    
-    try {
-      // Primary: Try Google Cloud TTS for authentic Nigerian voice (en-NG)
-      const [response] = await ttsClient.synthesizeSpeech({
-        input: { text },
-        voice: { languageCode: 'en-NG', name: 'en-NG-Wavenet-A' },
-        audioConfig: { audioEncoding: 'MP3' },
-      });
-      if (response.audioContent) {
-        return res.json({ 
-          audio: Buffer.from(response.audioContent).toString('base64'),
-          voice: 'en-NG-Wavenet-A',
-          mimeType: 'audio/mpeg'
-        });
-      }
-    } catch (ttsErr) {
-      console.warn("Cloud TTS failed, falling back to Gemini:", ttsErr);
-    }
 
-    // Fallback: Use Gemini TTS with a Nigerian persona prompt
+    // Use Gemini TTS for voice synthesis
     const response = await ai.models.generateContent({
-      model: "gemini-2.5-flash-preview-tts",
+      model: "gemini-2.0-flash",
       contents: [{ 
         parts: [{ 
           text: `Say this exactly, but use a friendly, professional Nigerian teacher accent and rhythm: ${text}` 
@@ -411,10 +391,12 @@ app.post("/get-audio", async (req, res) => {
         } 
       },
     });
+    const audioData = response.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
+    if (!audioData) throw new Error("No audio data returned from TTS");
     res.json({ 
-      audio: response.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data,
-      voice: 'gemini-tts-fallback',
-      mimeType: 'audio/pcm' // Frontend knows to wrap this in WAV
+      audio: audioData,
+      voice: 'gemini-tts',
+      mimeType: 'audio/pcm'
     });
   } catch (err) { 
     console.error("Audio generation failed:", err);

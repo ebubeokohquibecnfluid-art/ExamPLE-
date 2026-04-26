@@ -16,7 +16,6 @@
     "postinstall": "node patch-rollup.mjs"
   },
   "dependencies": {
-    "@google-cloud/text-to-speech": "^6.4.0",
     "@google/genai": "^1.29.0",
     "@rollup/wasm-node": "^4.60.0",
     "@types/multer": "^2.1.0",
