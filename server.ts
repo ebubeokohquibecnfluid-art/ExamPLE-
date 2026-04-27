@@ -393,6 +393,7 @@ app.post("/get-audio", async (req, res) => {
     // Try each TTS model in order; fall back to the next if one fails
     let audioData: string | undefined;
     let lastError: unknown;
+    let modelIndexUsed = -1;
     for (let i = 0; i < TTS_MODELS.length; i++) {
       if (i > 0) {
         const delayMs = TTS_RETRY_BASE_DELAY_MS * Math.pow(2, i - 1);
@@ -417,7 +418,7 @@ app.post("/get-audio", async (req, res) => {
           },
         });
         const data = response.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
-        if (data) { audioData = data; break; }
+        if (data) { audioData = data; modelIndexUsed = i; break; }
         lastError = new Error("No audio data in response");
       } catch (err) {
         console.error(`Audio generation failed with model ${model}:`, err);
@@ -440,7 +441,8 @@ app.post("/get-audio", async (req, res) => {
     res.json({ 
       audio: audioData,
       voice: 'gemini-tts',
-      mimeType: 'audio/pcm'
+      mimeType: 'audio/pcm',
+      fallbackUsed: modelIndexUsed > 0
     });
   } catch (err) { 
     console.error("Audio generation failed:", err);

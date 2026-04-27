@@ -1588,6 +1588,7 @@ function MainApp({ user, profile, onLogin, onLogout, refreshProfile, showToast, 
   const [audioLoading, setAudioLoading] = useState(false);
   const [audioUrl, setAudioUrl] = useState<string | null>(null);
   const [activeAudioMessageId, setActiveAudioMessageId] = useState<string | null>(null);
+  const [fallbackVoiceUsed, setFallbackVoiceUsed] = useState(false);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
   const [schoolName, setSchoolName] = useState<string | null>(null);
@@ -1985,6 +1986,7 @@ function MainApp({ user, profile, onLogin, onLogout, refreshProfile, showToast, 
 
     setAudioLoading(true);
     setActiveAudioMessageId(messageId);
+    setFallbackVoiceUsed(false);
     
     try {
       const res = await fetch(`${API_BASE_URL}/get-audio`, {
@@ -1993,6 +1995,7 @@ function MainApp({ user, profile, onLogin, onLogout, refreshProfile, showToast, 
         body: JSON.stringify({ text, usePidgin, user_id: userId })
       });
       const data = await res.json();
+      setFallbackVoiceUsed(data.fallbackUsed === true);
       
       if (data.audio) {
         let blob: Blob;
@@ -2018,6 +2021,7 @@ function MainApp({ user, profile, onLogin, onLogout, refreshProfile, showToast, 
         audio.onended = () => {
           setIsPlaying(false);
           setActiveAudioMessageId(null);
+          setFallbackVoiceUsed(false);
         };
 
         audio.onerror = (e) => {
@@ -2025,6 +2029,7 @@ function MainApp({ user, profile, onLogin, onLogout, refreshProfile, showToast, 
           setError("Audio playback interrupted.");
           setIsPlaying(false);
           setActiveAudioMessageId(null);
+          setFallbackVoiceUsed(false);
         };
 
         await audio.play();
@@ -2034,6 +2039,7 @@ function MainApp({ user, profile, onLogin, onLogout, refreshProfile, showToast, 
       console.error("Audio error:", err);
       setError(err.message || "Could not play audio.");
       setActiveAudioMessageId(null);
+      setFallbackVoiceUsed(false);
     } finally {
       setAudioLoading(false);
     }
@@ -2052,6 +2058,7 @@ function MainApp({ user, profile, onLogin, onLogout, refreshProfile, showToast, 
     }
     setIsPlaying(false);
     setActiveAudioMessageId(null);
+    setFallbackVoiceUsed(false);
   };
 
   const handleJoinSchool = async (e: React.FormEvent) => {
@@ -2564,6 +2571,11 @@ function MainApp({ user, profile, onLogin, onLogout, refreshProfile, showToast, 
                       >
                         <RotateCw className="w-4 h-4" />
                       </button>
+                      {fallbackVoiceUsed && (
+                        <span className="ml-auto text-[10px] text-amber-500 font-medium">
+                          Using backup voice
+                        </span>
+                      )}
                     </div>
                   )}
                 </div>
