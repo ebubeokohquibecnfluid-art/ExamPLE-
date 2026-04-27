@@ -47,7 +47,8 @@ import {
   ChevronDown,
   Flame,
   Zap,
-  Trash2
+  Trash2,
+  GitBranch
 } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import { BrowserRouter, Routes, Route, useParams, useNavigate, Link } from 'react-router-dom';
@@ -136,6 +137,8 @@ function AdminDashboard({ showToast }: { showToast: (msg: string, type?: 'succes
   const [loadingStudents, setLoadingStudents] = useState(false);
   const [deleteConfirm, setDeleteConfirm] = useState<{ type: 'user' | 'school'; id: string; name: string } | null>(null);
   const [deleting, setDeleting] = useState(false);
+  const [githubSync, setGithubSync] = useState<{ entries: any[]; lastFailure: any; message?: string } | null>(null);
+  const [githubSyncLoading, setGithubSyncLoading] = useState(false);
 
   const ADMIN_SECRET = "exam-admin-2026";
 
@@ -166,11 +169,27 @@ function AdminDashboard({ showToast }: { showToast: (msg: string, type?: 'succes
     }
   };
 
+  const fetchGithubSync = async () => {
+    setGithubSyncLoading(true);
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/admin/github-sync-status`, {
+        headers: { 'x-admin-secret': ADMIN_SECRET }
+      });
+      if (res.ok) {
+        setGithubSync(await res.json());
+      }
+    } catch (_) {
+    } finally {
+      setGithubSyncLoading(false);
+    }
+  };
+
   useEffect(() => {
     const savedAuth = localStorage.getItem('admin_auth');
     if (savedAuth === ADMIN_SECRET) {
       setIsAuthenticated(true);
       fetchData();
+      fetchGithubSync();
     } else {
       setLoading(false);
     }
@@ -183,6 +202,7 @@ function AdminDashboard({ showToast }: { showToast: (msg: string, type?: 'succes
       localStorage.setItem('admin_auth', ADMIN_SECRET);
       setLoading(true);
       fetchData();
+      fetchGithubSync();
     } else {
       showToast("Invalid password", "error");
     }
@@ -671,6 +691,75 @@ function AdminDashboard({ showToast }: { showToast: (msg: string, type?: 'succes
             </div>
           </motion.section>
         )}
+        {/* GitHub Sync History */}
+        <section className="space-y-4">
+          <div className="flex items-center justify-between">
+            <h2 className="text-lg font-black text-slate-900 flex items-center gap-2">
+              <GitBranch className="w-5 h-5 text-slate-600" /> GitHub Sync
+            </h2>
+            <button
+              onClick={fetchGithubSync}
+              disabled={githubSyncLoading}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-600 text-xs font-bold transition-all disabled:opacity-40"
+            >
+              <RefreshCw className={cn("w-3.5 h-3.5", githubSyncLoading && "animate-spin")} />
+              Refresh
+            </button>
+          </div>
+          <div className="bg-white rounded-[32px] border border-slate-200 shadow-sm overflow-hidden">
+            {githubSyncLoading && !githubSync ? (
+              <div className="py-12 flex items-center justify-center">
+                <Loader2 className="w-5 h-5 animate-spin text-slate-400" />
+              </div>
+            ) : githubSync?.entries?.length === 0 || !githubSync ? (
+              <div className="py-12 text-center text-sm text-slate-400 italic">
+                {githubSync?.message ?? "No sync history available"}
+              </div>
+            ) : (
+              <div className="divide-y divide-slate-50">
+                {githubSync.entries.map((entry: any, i: number) => (
+                  <div
+                    key={i}
+                    className={cn(
+                      "flex items-start gap-4 px-6 py-4",
+                      entry.status === 'failed' ? "bg-red-50/60" : "bg-green-50/30"
+                    )}
+                  >
+                    <div className={cn(
+                      "mt-0.5 w-8 h-8 rounded-xl flex items-center justify-center shrink-0",
+                      entry.status === 'failed' ? "bg-red-100" : "bg-green-100"
+                    )}>
+                      {entry.status === 'failed'
+                        ? <XCircle className="w-4 h-4 text-red-500" />
+                        : <CheckCircle className="w-4 h-4 text-green-600" />}
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className={cn(
+                          "text-xs font-black uppercase tracking-widest px-2 py-0.5 rounded-full",
+                          entry.status === 'failed'
+                            ? "bg-red-100 text-red-700"
+                            : "bg-green-100 text-green-700"
+                        )}>
+                          {entry.status}
+                        </span>
+                        <span className="text-[10px] text-slate-400 font-medium">{entry.timestamp}</span>
+                      </div>
+                      {entry.detail && (
+                        <p className={cn(
+                          "mt-1.5 text-xs font-mono whitespace-pre-wrap break-words",
+                          entry.status === 'failed' ? "text-red-700" : "text-slate-500"
+                        )}>
+                          {entry.detail.trim()}
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </section>
       </main>
 
       {/* Delete Confirmation Modal */}
