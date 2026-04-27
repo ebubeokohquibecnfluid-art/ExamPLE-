@@ -1,0 +1,26 @@
+uploads = []
+outputs = []
+
+[[generated]]
+id = "CNL2UA0_ljMLHjonFKdz0"
+uri = "file://public/images/bg-green.png"
+type = "image"
+title = "Abstract deep green energetic background"
+
+[[generated]]
+id = "ePdMA7cM15YXIFJvOKDJu"
+uri = "file://public/images/ai-tutor.png"
+type = "image"
+title = "AI Tutor 3D icon"
+
+[[generated]]
+id = "4g4Ei5MEmpmivplTCuWCz"
+uri = "file://public/images/exam-mode.png"
+type = "image"
+title = "Exam Mode checkmark"
+
+[[generated]]
+id = "g3u8NEw8dM4Dg_0IucB2j"
+uri = "file://public/images/tracker.png"
+type = "image"
+title = "Progress Tracker chart"
