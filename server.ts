@@ -6,7 +6,7 @@ import cors from "cors";
 import multer from "multer";
 import { GoogleGenAI, Modality } from "@google/genai";
 import { getDb } from "./src/db.js";
-import { TTS_MODELS } from "./src/services/geminiService.js";
+import { TTS_MODELS, TTS_RETRY_BASE_DELAY_MS } from "./src/services/geminiService.js";
 
 const app = express();
 const PORT = Number(process.env.PORT) || 5000;
@@ -393,7 +393,12 @@ app.post("/get-audio", async (req, res) => {
     // Try each TTS model in order; fall back to the next if one fails
     let audioData: string | undefined;
     let lastError: unknown;
-    for (const model of TTS_MODELS) {
+    for (let i = 0; i < TTS_MODELS.length; i++) {
+      if (i > 0) {
+        const delayMs = TTS_RETRY_BASE_DELAY_MS * Math.pow(2, i - 1);
+        await new Promise(resolve => setTimeout(resolve, delayMs));
+      }
+      const model = TTS_MODELS[i];
       try {
         const response = await ai.models.generateContent({
           model,

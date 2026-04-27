@@ -60,6 +60,7 @@ export async function generateExplanation(request: ExplanationRequest) {
 }
 
 export const TTS_MODELS = ["gemini-2.0-flash", "gemini-2.0-flash-lite"];
+export const TTS_RETRY_BASE_DELAY_MS = 500;
 
 export async function generateAudio(text: string, usePidgin: boolean) {
   const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
@@ -73,7 +74,12 @@ export async function generateAudio(text: string, usePidgin: boolean) {
   const prompt = `Say this cheerfully and with the warmth of a Nigerian teacher${usePidgin ? " in Pidgin" : ""}: ${cleanText}`;
 
   let lastError: unknown;
-  for (const model of TTS_MODELS) {
+  for (let i = 0; i < TTS_MODELS.length; i++) {
+    if (i > 0) {
+      const delayMs = TTS_RETRY_BASE_DELAY_MS * Math.pow(2, i - 1);
+      await new Promise(resolve => setTimeout(resolve, delayMs));
+    }
+    const model = TTS_MODELS[i];
     try {
       const response = await ai.models.generateContent({
         model,
