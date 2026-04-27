@@ -2350,7 +2350,7 @@ function MainApp({ user, profile, onLogin, onLogout, refreshProfile, showToast, 
       {/* Chat Area */}
       <main className="flex-1 overflow-y-auto p-4 space-y-4 scrollbar-hide">
         {messages.length === 0 && (
-          <div className="h-full flex flex-col items-center justify-center text-center p-8">
+          <div className="h-full flex flex-col items-center justify-center text-center p-8 gap-4">
             <div className="bg-white p-6 rounded-3xl shadow-sm border border-slate-200 max-w-xs">
               <Sparkles className="w-12 h-12 text-nigeria-green mx-auto mb-4 opacity-20" />
               <h2 className="text-xl font-bold text-slate-800 mb-2">Welcome to ExamPLE!</h2>
@@ -2371,6 +2371,24 @@ function MainApp({ user, profile, onLogin, onLogout, refreshProfile, showToast, 
                   "How do I solve quadratic..."
                 </button>
               </div>
+            </div>
+
+            <div className="bg-nigeria-green/5 border border-nigeria-green/20 rounded-3xl p-5 max-w-xs w-full text-left">
+              <p className="text-sm font-black text-nigeria-green mb-3 leading-snug">
+                Pass WAEC, NECO, JAMB and School Exams faster with AI
+              </p>
+              <ul className="space-y-2">
+                {[
+                  { icon: Trophy, text: 'Practice real exam questions' },
+                  { icon: BarChart2, text: 'See your weak topics' },
+                  { icon: CheckCircle2, text: 'Get marking scheme explanations' },
+                ].map(({ icon: Icon, text }) => (
+                  <li key={text} className="flex items-center gap-2 text-xs text-slate-600 font-medium">
+                    <Icon className="w-3.5 h-3.5 text-nigeria-green flex-shrink-0" />
+                    {text}
+                  </li>
+                ))}
+              </ul>
             </div>
           </div>
         )}
