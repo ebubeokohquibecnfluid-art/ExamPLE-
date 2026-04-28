@@ -1921,40 +1921,48 @@ function MainApp({ user, profile, onLogin, onLogout, refreshProfile, showToast, 
       setLoading(false); // Stop loading spinner once stream starts
 
       let fullContent = "";
+      let lineBuffer = "";
+
+      const processLine = (line: string) => {
+        if (!line.startsWith('data: ')) return;
+        const dataStr = line.slice(6).trim();
+        if (dataStr === '[DONE]') {
+          refreshProfile();
+          return;
+        }
+        try {
+          const data = JSON.parse(dataStr);
+          if (data.error) throw new Error(data.debug || data.error);
+          if (data.text) {
+            fullContent += data.text;
+            const cleanedContent = fullContent
+              .replace(/\$\$([^$]+)\$\$/g, '$1')
+              .replace(/\$([^$\n]{1,200})\$/g, '$1');
+            setMessages(prev => prev.map(m =>
+              m.id === assistantMsgId ? { ...m, content: cleanedContent } : m
+            ));
+          }
+        } catch (e) {
+          // Silently ignore parse errors for partial/malformed chunks
+        }
+      };
 
       while (reader) {
         const { done, value } = await reader.read();
         if (done) break;
 
-        const chunk = decoder.decode(value, { stream: true });
-        const lines = chunk.split('\n');
+        lineBuffer += decoder.decode(value, { stream: true });
+        const lines = lineBuffer.split('\n');
+        // Keep the last (potentially incomplete) line in the buffer
+        lineBuffer = lines.pop() ?? "";
 
         for (const line of lines) {
-          if (line.startsWith('data: ')) {
-            const dataStr = line.slice(6).trim();
-            if (dataStr === '[DONE]') {
-              refreshProfile();
-              continue;
-            }
-            try {
-              const data = JSON.parse(dataStr);
-              if (data.error) throw new Error(data.debug || data.error);
-              if (data.text) {
-                fullContent += data.text;
-                // Clean up unnecessary $ signs around single variables or simple formulas
-                const cleanedContent = fullContent
-                  .replace(/\$\$([^$]+)\$\$/g, '$1')   // strip $$...$$ display math
-                  .replace(/\$([^$\n]{1,200})\$/g, '$1'); // strip $...$ inline math
-                setMessages(prev => prev.map(m => 
-                  m.id === assistantMsgId ? { ...m, content: cleanedContent } : m
-                ));
-              }
-            } catch (e) {
-              console.error("Parse error:", e);
-            }
-          }
+          processLine(line);
         }
       }
+
+      // Process any remaining buffered content
+      if (lineBuffer) processLine(lineBuffer);
     } catch (err: any) {
       console.error("Submit error:", err);
       setError(err.message || "Teacher is busy. Please try again.");

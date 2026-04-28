@@ -381,6 +381,29 @@ app.post("/register-school", async (req, res) => {
   } catch (err) { res.status(500).json({ error: "Registration failed" }); }
 });
 
+app.post("/api/transcribe", async (req, res) => {
+  const { audioBase64 } = req.body;
+  if (!audioBase64) return res.status(400).json({ error: "Missing audio" });
+  try {
+    const mimeMatch = audioBase64.match(/^data:([^;]+);base64,/);
+    const mimeType = mimeMatch ? mimeMatch[1] : 'audio/webm';
+    const base64Data = audioBase64.replace(/^data:[^;]+;base64,/, '');
+    const response = await ai.models.generateContent({
+      model: "gemini-2.0-flash",
+      contents: [{
+        parts: [
+          { inlineData: { mimeType, data: base64Data } },
+          { text: "Transcribe exactly what is being said in this audio. Return only the spoken words, nothing else. No punctuation adjustments, no commentary." }
+        ]
+      }]
+    });
+    res.json({ text: response.text?.trim() || "" });
+  } catch (err: any) {
+    console.error("Transcription error:", err?.message || err);
+    res.status(500).json({ error: "Transcription failed", debug: err?.message });
+  }
+});
+
 app.post("/get-audio", async (req, res) => {
   const { text, user_id } = req.body;
   try {
@@ -440,8 +463,8 @@ app.post("/get-audio", async (req, res) => {
 
     res.json({ 
       audio: audioData,
-      voice: 'gemini-tts',
       mimeType: 'audio/pcm',
+      voice: 'gemini-tts',
       fallbackUsed: modelIndexUsed > 0
     });
   } catch (err) { 
