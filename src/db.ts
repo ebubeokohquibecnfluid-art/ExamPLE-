@@ -178,6 +178,39 @@ export async function getDb() {
         console.error('db.exec error:', e);
         throw e;
       }
+    },
+
+    transaction: async <T>(fn: (tx: {
+      get: (query: string, params?: any[]) => Promise<any>;
+      run: (query: string, params?: any[]) => Promise<any>;
+      all: (query: string, params?: any[]) => Promise<any[]>;
+    }) => Promise<T>): Promise<T> => {
+      const client = await pool.connect();
+      try {
+        await client.query('BEGIN');
+        const tx = {
+          get: async (query: string, params: any[] = []) => {
+            const result = await client.query(toPostgres(query), params);
+            return result.rows.length > 0 ? transformRow(result.rows[0]) : null;
+          },
+          run: async (query: string, params: any[] = []) => {
+            const result = await client.query(toPostgres(query), params);
+            return { changes: result.rowCount ?? 0 };
+          },
+          all: async (query: string, params: any[] = []) => {
+            const result = await client.query(toPostgres(query), params);
+            return result.rows.map(transformRow);
+          },
+        };
+        const result = await fn(tx);
+        await client.query('COMMIT');
+        return result;
+      } catch (e) {
+        await client.query('ROLLBACK');
+        throw e;
+      } finally {
+        client.release();
+      }
     }
   };
 }

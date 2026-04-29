@@ -297,11 +297,7 @@ async function processPayment(opts: {
   if (!db) throw new Error("DB missing");
   const { reference, userId, userEmail, planName, creditAmount, totalAmount } = opts;
 
-  // Idempotency — skip if already processed
-  const existing = await db.get("SELECT id FROM payments WHERE reference = ?", [reference]);
-  if (existing) return;
-
-  // Fetch user details
+  // Fetch user and school details outside the transaction (read-only, no race risk)
   const user = await db.get(
     "SELECT displayname, schoolId FROM users WHERE uid = ?",
     [userId]
@@ -309,7 +305,6 @@ async function processPayment(opts: {
   const userName = user?.displayName || user?.displayname || userEmail;
   const schoolId = user?.schoolId || null;
 
-  // Fetch school details if applicable
   let schoolName: string | null = null;
   let schoolShare = 0;
   let platformShare = totalAmount;
@@ -324,36 +319,44 @@ async function processPayment(opts: {
     platformShare = Math.round((totalAmount - schoolShare) * 100) / 100;
   }
 
-  // 1. Add credits and set 30-day expiry
+  const now = new Date().toISOString();
   const expiry = new Date();
   expiry.setDate(expiry.getDate() + 30);
-  await db.run(
-    "UPDATE users SET credits = credits + ?, expiry_date = ? WHERE uid = ?",
-    [creditAmount, expiry.toISOString(), userId]
-  );
 
-  // 2. Credit school's earnings
-  if (schoolId && schoolShare > 0) {
-    await db.run(
-      "UPDATE schools SET total_earnings = total_earnings + ? WHERE school_id = ?",
-      [schoolShare, schoolId]
+  // Wrap all writes in a single atomic transaction.
+  // The payment INSERT uses ON CONFLICT DO NOTHING as the idempotency lock —
+  // if rowCount is 0, this reference was already processed and we bail out.
+  await db.transaction(async (tx) => {
+    const insert = await tx.run(
+      `INSERT INTO payments (reference, user_id, user_name, user_email, plan_name, total_amount, platform_share, school_share, school_id, school_name, timestamp)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+       ON CONFLICT (reference) DO NOTHING`,
+      [reference, userId, userName, userEmail, planName, totalAmount, platformShare, schoolShare, schoolId, schoolName, now]
     );
-  }
 
-  // 3. Store detailed payment record
-  const now = new Date().toISOString();
-  await db.run(
-    `INSERT INTO payments (reference, user_id, user_name, user_email, plan_name, total_amount, platform_share, school_share, school_id, school_name, timestamp)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-     ON CONFLICT (reference) DO NOTHING`,
-    [reference, userId, userName, userEmail, planName, totalAmount, platformShare, schoolShare, schoolId, schoolName, now]
-  );
+    // If nothing was inserted, this reference was already processed — skip
+    if (insert.changes === 0) return;
 
-  // 4. Activity log
-  await db.run(
-    "INSERT INTO activity (type, details, timestamp) VALUES (?, ?, ?)",
-    ['payment', JSON.stringify({ reference, userId, userName, userEmail, planName, totalAmount, platformShare, schoolShare, schoolId, schoolName }), now]
-  );
+    // 1. Add credits and set 30-day expiry
+    await tx.run(
+      "UPDATE users SET credits = credits + ?, expiry_date = ? WHERE uid = ?",
+      [creditAmount, expiry.toISOString(), userId]
+    );
+
+    // 2. Credit school's earnings
+    if (schoolId && schoolShare > 0) {
+      await tx.run(
+        "UPDATE schools SET total_earnings = total_earnings + ? WHERE school_id = ?",
+        [schoolShare, schoolId]
+      );
+    }
+
+    // 3. Activity log
+    await tx.run(
+      "INSERT INTO activity (type, details, timestamp) VALUES (?, ?, ?)",
+      ['payment', JSON.stringify({ reference, userId, userName, userEmail, planName, totalAmount, platformShare, schoolShare, schoolId, schoolName }), now]
+    );
+  });
 
   console.log(`✅ Payment recorded: ${reference} | ${userName} | ₦${totalAmount} | school: ${schoolName || 'independent'} | platform: ₦${platformShare} | school: ₦${schoolShare}`);
 }
