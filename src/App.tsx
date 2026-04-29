@@ -1189,7 +1189,7 @@ function SchoolDashboard({ showToast }: { showToast: (msg: string, type?: 'succe
             <p className="text-sm text-slate-500">
               {showReset 
                 ? "Verify your school's referral code to set a new password."
-                : `Enter your admin password to access the dashboard for ${school_slug === 'dashboard' ? 'your school' : <b>{school_slug}</b>}`
+                : <>Enter your admin password to access the dashboard for <b>{school_slug === 'dashboard' ? 'your school' : school_slug}</b></>
               }
             </p>
           </div>

@@ -65,10 +65,13 @@ app.set("trust proxy", 1);
 
 // --- 4. SAFE DATABASE INITIALIZATION (Non-blocking) ---
 let db = null;
-getDb()
+// DB init must complete before the server accepts any connections.
+// Do NOT start listening until getDb() resolves so that the !db guard
+// in every endpoint is never triggered by a cold-start race condition.
+const dbReady = getDb()
   .then(database => {
     db = database;
-    console.log("✅ Database connected in background");
+    console.log("✅ Database connected");
     
     // Ensure schema is up to date (IF NOT EXISTS prevents errors on re-runs)
     db.run("ALTER TABLE users ADD COLUMN IF NOT EXISTS expiry_date TEXT").catch(() => {});
@@ -84,6 +87,7 @@ getDb()
   })
   .catch(err => {
     console.error("❌ DB Connection Error:", err);
+    process.exit(1); // Fail fast — autoscale will restart cleanly
   });
 
 // --- 5. ENVIRONMENT VARIABLES ---
@@ -1432,6 +1436,10 @@ process.on("uncaughtException", (err) => { console.error("Uncaught Exception:", 
 process.on("unhandledRejection", (err) => { console.error("Unhandled Rejection:", err); });
 
 // --- 10. SERVER START (AT THE VERY END) ---
-app.listen(PORT, "0.0.0.0", () => {
-  console.log(`🚀 ExamPLE running on port ${PORT}`);
+// Wait for DB before binding to port — eliminates cold-start race where
+// early requests hit db=null and get a 500 "DB missing" response.
+dbReady.then(() => {
+  app.listen(PORT, "0.0.0.0", () => {
+    console.log(`🚀 ExamPLE running on port ${PORT}`);
+  });
 });
