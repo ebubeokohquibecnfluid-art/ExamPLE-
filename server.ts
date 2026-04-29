@@ -1241,6 +1241,7 @@ app.post("/api/schools/save-bank-details", async (req, res) => {
 // --- SUPPORT CHAT ENDPOINT ---
 app.post("/api/support/chat", async (req, res) => {
   const { history, message } = req.body;
+  if (!message) return res.status(400).json({ error: "message is required" });
 
   // --- Scripted answers for common questions (always accurate, no AI drift) ---
   // More specific patterns must come before general ones

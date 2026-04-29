@@ -2,21 +2,15 @@
   "buildCommand": "npm run build",
   "outputDirectory": "dist",
   "rewrites": [
-    { "source": "/api/:path*", "destination": "https://exam-ple--bubeelyon.replit.app/api/:path*" },
-    { "source": "/school-dashboard", "destination": "https://exam-ple--bubeelyon.replit.app/school-dashboard" },
-    { "source": "/school-login", "destination": "https://exam-ple--bubeelyon.replit.app/school-login" },
-    { "source": "/register-school", "destination": "https://exam-ple--bubeelyon.replit.app/register-school" },
-    { "source": "/request-withdrawal", "destination": "https://exam-ple--bubeelyon.replit.app/request-withdrawal" },
-    { "source": "/ask", "destination": "https://exam-ple--bubeelyon.replit.app/ask" },
-    { "source": "/speak", "destination": "https://exam-ple--bubeelyon.replit.app/speak" },
-    { "source": "/transcribe", "destination": "https://exam-ple--bubeelyon.replit.app/transcribe" },
-    { "source": "/login", "destination": "https://exam-ple--bubeelyon.replit.app/login" },
-    { "source": "/register", "destination": "https://exam-ple--bubeelyon.replit.app/register" },
-    { "source": "/profile", "destination": "https://exam-ple--bubeelyon.replit.app/profile" },
-    { "source": "/submit-exam", "destination": "https://exam-ple--bubeelyon.replit.app/submit-exam" },
-    { "source": "/payment/:path*", "destination": "https://exam-ple--bubeelyon.replit.app/payment/:path*" },
-    { "source": "/admin/:path*", "destination": "https://exam-ple--bubeelyon.replit.app/admin/:path*" },
-    { "source": "/uploads/:path*", "destination": "https://exam-ple--bubeelyon.replit.app/uploads/:path*" },
-    { "source": "/(.*)", "destination": "/index.html" }
+    { "source": "/api/:path*",           "destination": "https://exam-ple--bubeelyon.replit.app/api/:path*" },
+    { "source": "/admin/:path*",         "destination": "https://exam-ple--bubeelyon.replit.app/admin/:path*" },
+    { "source": "/ask-question",         "destination": "https://exam-ple--bubeelyon.replit.app/ask-question" },
+    { "source": "/get-audio",            "destination": "https://exam-ple--bubeelyon.replit.app/get-audio" },
+    { "source": "/school-dashboard",     "destination": "https://exam-ple--bubeelyon.replit.app/school-dashboard" },
+    { "source": "/school-login",         "destination": "https://exam-ple--bubeelyon.replit.app/school-login" },
+    { "source": "/register-school",      "destination": "https://exam-ple--bubeelyon.replit.app/register-school" },
+    { "source": "/request-withdrawal",   "destination": "https://exam-ple--bubeelyon.replit.app/request-withdrawal" },
+    { "source": "/uploads/:path*",       "destination": "https://exam-ple--bubeelyon.replit.app/uploads/:path*" },
+    { "source": "/(.*)",                 "destination": "/index.html" }
   ]
 }
