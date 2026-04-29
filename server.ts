@@ -1059,7 +1059,7 @@ app.post("/school-dashboard", async (req, res) => {
     
     const withdrawals = await db.all("SELECT * FROM withdrawals WHERE school_id = ?", [school.school_id]);
     const students = await db.all(
-      "SELECT uid, displayname, credits, trial_expires_at, expiry_date FROM users WHERE schoolId = ? ORDER BY trial_expires_at DESC",
+      "SELECT uid, displayname as displayName, credits, trial_expires_at, expiry_date FROM users WHERE schoolId = ? ORDER BY trial_expires_at DESC",
       [school.school_id]
     );
     const usersRes = await db.get("SELECT COUNT(*) as count FROM users WHERE schoolId = ?", [school.school_id]);
@@ -1146,6 +1146,7 @@ app.get("/admin/users", authenticateAdmin, async (req, res) => {
       const school = schools.find(s => s.school_id === u.schoolId);
       return {
         ...u,
+        displayName: u.displayname || u.displayName || "",
         school_name: school ? school.school_name : "Private Student"
       };
     });
@@ -1166,7 +1167,7 @@ app.get("/admin/schools/:school_id/students", authenticateAdmin, async (req: any
   if (!db) return res.status(500).json({ error: "DB missing" });
   try {
     const students = await db.all(
-      "SELECT uid, displayname, credits, trial_expires_at, expiry_date FROM users WHERE schoolId = ? ORDER BY trial_expires_at DESC",
+      "SELECT uid, displayname as displayName, credits, trial_expires_at, expiry_date FROM users WHERE schoolId = ? ORDER BY trial_expires_at DESC",
       [req.params.school_id]
     );
     res.json(students);
@@ -1232,7 +1233,7 @@ app.post("/admin/topup", authenticateAdmin, async (req, res) => {
     const newExpiry = (existingExpiry && existingExpiry > thirtyDaysFromNow ? existingExpiry : thirtyDaysFromNow).toISOString();
 
     await db.run("UPDATE users SET credits = credits + ?, expiry_date = ? WHERE uid = ?", [credits, newExpiry, uid]);
-    const updated = await db.get("SELECT uid, credits, displayname FROM users WHERE uid = ?", [uid]);
+    const updated = await db.get("SELECT uid, credits, displayname as displayName FROM users WHERE uid = ?", [uid]);
     res.json({
       success: true, uid,
       creditsBefore: user.credits, creditsAfter: updated.credits,
