@@ -941,8 +941,8 @@ function SchoolDashboard({ showToast }: { showToast: (msg: string, type?: 'succe
             if (d.requests) setMigrationRequests(d.requests);
           }).catch(() => {});
         }
-      } else if (res.status === 401) {
-        // Password no longer valid — clear saved auth and show login
+      } else if (res.status === 401 || res.status === 400) {
+        // Password missing or invalid — clear saved auth and show login
         localStorage.removeItem(`school_auth_${school_slug}`);
         localStorage.removeItem(`school_pwd_${school_slug}`);
         setIsLoggedIn(false);
@@ -974,11 +974,16 @@ function SchoolDashboard({ showToast }: { showToast: (msg: string, type?: 'succe
 
   useEffect(() => {
     const savedAuth = localStorage.getItem(`school_auth_${school_slug}`);
-    if (savedAuth === 'true') {
+    const savedPwd = localStorage.getItem(`school_pwd_${school_slug}`);
+    if (savedAuth === 'true' && savedPwd) {
       setIsLoggedIn(true);
       fetchDashboard();
       fetchPaymentHistory();
     } else {
+      // Clear stale auth flag if password is missing
+      if (savedAuth === 'true' && !savedPwd) {
+        localStorage.removeItem(`school_auth_${school_slug}`);
+      }
       setLoading(false);
     }
   }, [school_slug]);
