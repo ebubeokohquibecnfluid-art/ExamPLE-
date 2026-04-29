@@ -2111,7 +2111,8 @@ function MainApp({ user, profile, onLogin, onLogout, refreshProfile, showToast, 
 
   // Load School Context
   useEffect(() => {
-    if (school_slug) {
+    const NON_SCHOOL_PATHS = ['payment-success', 'admin', 'settings', 'register'];
+    if (school_slug && !NON_SCHOOL_PATHS.includes(school_slug)) {
       const fetchSchool = async () => {
         try {
           const res = await fetch(`${API_BASE_URL}/api/schools/by-slug/${school_slug}`);
@@ -4338,6 +4339,7 @@ export default function App() {
         <Routes>
           <Route path="/" element={<MainApp user={user} profile={profile} onLogin={() => { console.log("Login clicked"); setShowLoginModal(true); }} onLogout={handleLogout} refreshProfile={() => user && fetchProfile(user.uid)} showToast={showToast} showSettings={showSettings} setShowSettings={setShowSettings} newlyCreated={newlyCreated} />} />
           <Route path="/admin" element={<AdminDashboard showToast={showToast} />} />
+          <Route path="/payment-success" element={<MainApp user={user} profile={profile} onLogin={() => { console.log("Login clicked"); setShowLoginModal(true); }} onLogout={handleLogout} refreshProfile={() => user && fetchProfile(user.uid)} showToast={showToast} showSettings={showSettings} setShowSettings={setShowSettings} newlyCreated={newlyCreated} />} />
           <Route path="/:school_slug" element={<MainApp user={user} profile={profile} onLogin={() => { console.log("Login clicked"); setShowLoginModal(true); }} onLogout={handleLogout} refreshProfile={() => user && fetchProfile(user.uid)} showToast={showToast} showSettings={showSettings} setShowSettings={setShowSettings} newlyCreated={newlyCreated} />} />
           <Route path="/:school_slug/dashboard" element={<SchoolDashboard showToast={showToast} />} />
         </Routes>
