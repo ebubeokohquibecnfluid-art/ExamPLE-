@@ -58,6 +58,13 @@ getDb()
     db.run("ALTER TABLE users ADD COLUMN IF NOT EXISTS expiry_date TEXT").catch(() => {});
     db.run("ALTER TABLE users ADD COLUMN IF NOT EXISTS displayname TEXT").catch(() => {});
     db.run("ALTER TABLE schools ADD COLUMN IF NOT EXISTS total_earnings REAL DEFAULT 0").catch(() => {});
+    db.run(`CREATE TABLE IF NOT EXISTS migration_requests (
+      id TEXT PRIMARY KEY,
+      uid TEXT NOT NULL,
+      school_id TEXT NOT NULL,
+      status TEXT DEFAULT 'pending',
+      created_at TEXT DEFAULT CURRENT_TIMESTAMP
+    )`).catch(() => {});
   })
   .catch(err => {
     console.error("❌ DB Connection Error:", err);
@@ -150,6 +157,7 @@ app.post("/api/auth/simple", async (req, res) => {
   if (!uid || !db) return res.status(400).json({ error: "Missing data" });
   try {
     const user = await db.get("SELECT * FROM users WHERE uid = ?", [uid]);
+    let newlyCreated = false;
     if (!user) {
       if (returnOnly) return res.status(404).json({ error: "User not found" });
 
@@ -175,6 +183,7 @@ app.post("/api/auth/simple", async (req, res) => {
            displayname = COALESCE(users.displayname, EXCLUDED.displayname)`,
         [uid, 10, displayName || "Student", clientIp, trialExpiresAt]
       );
+      newlyCreated = true;
     } else if (displayName && !user.displayName) {
       await db.run("UPDATE users SET displayname = ? WHERE uid = ?", [displayName, uid]);
     }
@@ -187,7 +196,7 @@ app.post("/api/auth/simple", async (req, res) => {
         [fresh.schoolId]
       );
     }
-    res.json({ ...fresh, school: schoolMeta });
+    res.json({ ...fresh, school: schoolMeta, newlyCreated });
   } catch (err) { res.status(500).json({ error: "Auth failed" }); }
 });
 
@@ -697,6 +706,76 @@ app.post("/api/schools/link-student", async (req, res) => {
     await db.run("UPDATE schools SET total_students = (SELECT COUNT(*) FROM users WHERE schoolId = ?) WHERE school_id = ?", [school_id, school_id]);
     res.json({ success: true, school_name: school.school_name });
   } catch (err) { res.status(500).json({ error: "Link failed" }); }
+});
+
+// Submit a migration request (existing independent student wants to join a school)
+app.post("/api/schools/migration-request", async (req, res) => {
+  const { uid, school_id } = req.body;
+  if (!db || !uid || !school_id) return res.status(400).json({ error: "Missing data" });
+  try {
+    const user = await db.get("SELECT uid, displayname, schoolId FROM users WHERE uid = ?", [uid]);
+    if (!user) return res.status(404).json({ error: "User not found" });
+    if (user.schoolId) return res.status(400).json({ error: "Already linked to a school" });
+    const school = await db.get("SELECT school_id, school_name FROM schools WHERE school_id = ?", [school_id]);
+    if (!school) return res.status(404).json({ error: "School not found" });
+    // Cancel any previous pending request for this student+school pair
+    await db.run("DELETE FROM migration_requests WHERE uid = ? AND school_id = ? AND status = 'pending'", [uid, school_id]);
+    const id = `mig_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+    await db.run(
+      "INSERT INTO migration_requests (id, uid, school_id, status, created_at) VALUES (?, ?, ?, 'pending', CURRENT_TIMESTAMP)",
+      [id, uid, school_id]
+    );
+    res.json({ success: true, requestId: id, schoolName: school.school_name });
+  } catch (err: any) {
+    console.error("migration-request error:", err?.message);
+    res.status(500).json({ error: "Request failed" });
+  }
+});
+
+// List pending migration requests for a school dashboard
+app.post("/api/schools/:school_id/migration-requests", async (req, res) => {
+  const { school_id } = req.params;
+  const { password } = req.body;
+  if (!db || !password) return res.status(400).json({ error: "Missing data" });
+  try {
+    const school = await db.get("SELECT school_id, password FROM schools WHERE school_id = ?", [school_id]);
+    if (!school || school.password !== password) return res.status(403).json({ error: "Invalid credentials" });
+    const requests = await db.all(
+      `SELECT mr.id, mr.uid, mr.status, mr.created_at, u.displayname as displayName
+       FROM migration_requests mr
+       JOIN users u ON u.uid = mr.uid
+       WHERE mr.school_id = ? AND mr.status = 'pending'
+       ORDER BY mr.created_at DESC`,
+      [school_id]
+    );
+    res.json({ requests });
+  } catch (err: any) {
+    console.error("migration-requests list error:", err?.message);
+    res.status(500).json({ error: "Query failed" });
+  }
+});
+
+// Approve or reject a migration request
+app.post("/api/schools/migration-requests/:id/decide", async (req, res) => {
+  const { id } = req.params;
+  const { action, password } = req.body; // action: 'approve' | 'reject'
+  if (!db || !action || !password) return res.status(400).json({ error: "Missing data" });
+  try {
+    const mr = await db.get("SELECT * FROM migration_requests WHERE id = ?", [id]);
+    if (!mr) return res.status(404).json({ error: "Request not found" });
+    const school = await db.get("SELECT school_id, school_name, password FROM schools WHERE school_id = ?", [mr.school_id]);
+    if (!school || school.password !== password) return res.status(403).json({ error: "Invalid credentials" });
+    if (mr.status !== 'pending') return res.status(400).json({ error: "Request already resolved" });
+    if (action === 'approve') {
+      await db.run("UPDATE users SET schoolId = ? WHERE uid = ?", [mr.school_id, mr.uid]);
+      await db.run("UPDATE schools SET total_students = (SELECT COUNT(*) FROM users WHERE schoolId = ?) WHERE school_id = ?", [mr.school_id, mr.school_id]);
+    }
+    await db.run("UPDATE migration_requests SET status = ? WHERE id = ?", [action === 'approve' ? 'approved' : 'rejected', id]);
+    res.json({ success: true, action, schoolName: school.school_name });
+  } catch (err: any) {
+    console.error("migration-decide error:", err?.message);
+    res.status(500).json({ error: "Decision failed" });
+  }
 });
 
 // Save school customisation (color, logo, tagline)

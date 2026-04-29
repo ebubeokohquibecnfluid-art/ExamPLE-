@@ -48,7 +48,10 @@ import {
   Flame,
   Zap,
   Trash2,
-  GitBranch
+  GitBranch,
+  UserCheck,
+  UserX,
+  UserPlus
 } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import { BrowserRouter, Routes, Route, useParams, useNavigate, Link } from 'react-router-dom';
@@ -908,6 +911,8 @@ function SchoolDashboard({ showToast }: { showToast: (msg: string, type?: 'succe
   const [showCustomForm, setShowCustomForm] = useState(false);
   const [uploadingLogo, setUploadingLogo] = useState(false);
   const logoInputRef = useRef<HTMLInputElement>(null);
+  const [migrationRequests, setMigrationRequests] = useState<any[]>([]);
+  const [decidingId, setDecidingId] = useState<string | null>(null);
 
   const fetchDashboard = async () => {
     try {
@@ -920,6 +925,17 @@ function SchoolDashboard({ showToast }: { showToast: (msg: string, type?: 'succe
       if (res.ok) {
         const result = await res.json();
         setData(result);
+        // Also fetch migration requests
+        const savedPwd = localStorage.getItem(`school_pwd_${school_slug}`) || '';
+        if (result.school_id && savedPwd) {
+          fetch(`${API_BASE_URL}/api/schools/${result.school_id}/migration-requests`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ password: savedPwd })
+          }).then(r => r.json()).then(d => {
+            if (d.requests) setMigrationRequests(d.requests);
+          }).catch(() => {});
+        }
       } else {
         setError("School not found");
       }
@@ -1569,12 +1585,98 @@ function SchoolDashboard({ showToast }: { showToast: (msg: string, type?: 'succe
             </div>
           )}
         </div>
+
+        {/* Migration Requests */}
+        {migrationRequests.length > 0 && (
+          <div className="bg-white rounded-[32px] border border-amber-200 shadow-sm overflow-hidden">
+            <div className="p-6 border-b border-amber-100 flex items-center gap-3">
+              <div className="w-8 h-8 bg-amber-100 rounded-xl flex items-center justify-center flex-shrink-0">
+                <UserPlus className="w-4 h-4 text-amber-600" />
+              </div>
+              <div className="flex-1">
+                <h3 className="text-sm font-black text-slate-900">Migration Requests</h3>
+                <p className="text-[10px] text-slate-400">Independent students who want to join your school</p>
+              </div>
+              <span className="text-[10px] font-black text-amber-600 bg-amber-100 px-2 py-1 rounded-full">
+                {migrationRequests.length} pending
+              </span>
+            </div>
+            <div className="divide-y divide-slate-50">
+              {migrationRequests.map((req: any) => (
+                <div key={req.id} className="px-6 py-4 flex items-center gap-3">
+                  <div className="w-8 h-8 rounded-full bg-amber-50 flex items-center justify-center flex-shrink-0">
+                    <span className="text-xs font-black text-amber-500">
+                      {(req.displayName || '?')[0].toUpperCase()}
+                    </span>
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-bold text-slate-800 truncate">{req.displayName}</p>
+                    <p className="text-[10px] text-slate-400">Wants to join as a school student</p>
+                  </div>
+                  <div className="flex items-center gap-2 flex-shrink-0">
+                    <button
+                      disabled={decidingId === req.id}
+                      onClick={async () => {
+                        setDecidingId(req.id);
+                        try {
+                          const savedPwd = localStorage.getItem(`school_pwd_${school_slug}`) || '';
+                          const res = await fetch(`${API_BASE_URL}/api/schools/migration-requests/${req.id}/decide`, {
+                            method: "POST",
+                            headers: { "Content-Type": "application/json" },
+                            body: JSON.stringify({ action: 'approve', password: savedPwd })
+                          });
+                          if (res.ok) {
+                            setMigrationRequests(prev => prev.filter(r => r.id !== req.id));
+                            showToast(`${req.displayName} approved and added to your school!`, 'success');
+                            fetchDashboard();
+                          } else {
+                            showToast("Approval failed", "error");
+                          }
+                        } catch { showToast("Request failed", "error"); }
+                        finally { setDecidingId(null); }
+                      }}
+                      className="flex items-center gap-1 bg-nigeria-green text-white px-3 py-2 rounded-xl text-xs font-bold active:scale-95 transition-all disabled:opacity-50"
+                    >
+                      {decidingId === req.id ? <Loader2 className="w-3 h-3 animate-spin" /> : <UserCheck className="w-3 h-3" />}
+                      Approve
+                    </button>
+                    <button
+                      disabled={decidingId === req.id}
+                      onClick={async () => {
+                        setDecidingId(req.id);
+                        try {
+                          const savedPwd = localStorage.getItem(`school_pwd_${school_slug}`) || '';
+                          const res = await fetch(`${API_BASE_URL}/api/schools/migration-requests/${req.id}/decide`, {
+                            method: "POST",
+                            headers: { "Content-Type": "application/json" },
+                            body: JSON.stringify({ action: 'reject', password: savedPwd })
+                          });
+                          if (res.ok) {
+                            setMigrationRequests(prev => prev.filter(r => r.id !== req.id));
+                            showToast(`${req.displayName}'s request rejected — they remain independent.`, 'info');
+                          } else {
+                            showToast("Rejection failed", "error");
+                          }
+                        } catch { showToast("Request failed", "error"); }
+                        finally { setDecidingId(null); }
+                      }}
+                      className="flex items-center gap-1 bg-slate-100 text-slate-600 px-3 py-2 rounded-xl text-xs font-bold active:scale-95 transition-all disabled:opacity-50"
+                    >
+                      <UserX className="w-3 h-3" />
+                      Reject
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
       </main>
     </div>
   );
 }
 
-function MainApp({ user, profile, onLogin, onLogout, refreshProfile, showToast, showSettings, setShowSettings }: { user: any | null, profile: UserProfile | null, onLogin: () => void, onLogout: () => void, refreshProfile: () => void, showToast: (msg: string, type?: any) => void, showSettings: boolean, setShowSettings: (show: boolean) => void }) {
+function MainApp({ user, profile, onLogin, onLogout, refreshProfile, showToast, showSettings, setShowSettings, newlyCreated }: { user: any | null, profile: UserProfile | null, onLogin: () => void, onLogout: () => void, refreshProfile: () => void, showToast: (msg: string, type?: any) => void, showSettings: boolean, setShowSettings: (show: boolean) => void, newlyCreated: boolean }) {
   const { school_slug } = useParams();
   const navigate = useNavigate();
   
@@ -1611,6 +1713,9 @@ function MainApp({ user, profile, onLogin, onLogout, refreshProfile, showToast, 
   const [deleteType, setDeleteType] = useState<'temporary' | 'permanent'>('temporary');
   const [deleteConfirmText, setDeleteConfirmText] = useState('');
   const [deletingAccount, setDeletingAccount] = useState(false);
+  const [showMigrationDialog, setShowMigrationDialog] = useState(false);
+  const [migrationLoading, setMigrationLoading] = useState(false);
+  const [migrationRequested, setMigrationRequested] = useState(false);
 
   const [isRecording, setIsRecording] = useState(false);
   const [transcribing, setTranscribing] = useState(false);
@@ -1787,27 +1892,29 @@ function MainApp({ user, profile, onLogin, onLogout, refreshProfile, showToast, 
     }
   }, [school_slug]);
 
-  // Automatic school joining
+  // School joining: new students auto-join; existing independent students see a migration dialog
   useEffect(() => {
-    if (schoolId && userId && userId !== 'guest' && profile && profile.schoolId !== schoolId) {
-      const autoJoin = async () => {
-        try {
-          const res = await fetch(`${API_BASE_URL}/api/schools/link-student`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ uid: userId, school_id: schoolId })
-          });
-          if (res.ok) {
-            refreshProfile();
-            showToast(`Automatically joined ${schoolName || 'school'}!`, 'success');
-          }
-        } catch (e) {
-          console.error("Auto-join failed", e);
+    if (!schoolId || !userId || userId === 'guest' || !profile) return;
+    if (profile.schoolId === schoolId) return; // already linked — nothing to do
+    if (profile.schoolId) return; // linked to a DIFFERENT school — don't override
+
+    if (newlyCreated) {
+      // Brand-new account: immediately link to the school they joined through
+      fetch(`${API_BASE_URL}/api/schools/link-student`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ uid: userId, school_id: schoolId })
+      }).then(r => {
+        if (r.ok) {
+          refreshProfile();
+          showToast(`Welcome to ${schoolName || 'school'}!`, 'success');
         }
-      };
-      autoJoin();
+      }).catch(e => console.error("Auto-join failed", e));
+    } else {
+      // Existing independent student visiting a school link — ask before linking
+      setShowMigrationDialog(true);
     }
-  }, [schoolId, userId, profile?.schoolId, schoolName]);
+  }, [schoolId, userId, profile?.schoolId, schoolName, newlyCreated]);
 
   // Auto-scroll to bottom of chat
   useEffect(() => {
@@ -3383,6 +3490,70 @@ function MainApp({ user, profile, onLogin, onLogout, refreshProfile, showToast, 
           </div>
         )}
 
+        {/* Migration Dialog — shown when an independent student visits a school URL */}
+        {showMigrationDialog && !migrationRequested && (
+          <div className="fixed inset-0 z-[120] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.9 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.9 }}
+              className="bg-white rounded-[40px] p-8 max-w-sm w-full shadow-2xl"
+            >
+              <div className="w-16 h-16 rounded-full bg-nigeria-green/10 flex items-center justify-center mx-auto mb-4">
+                <School className="w-8 h-8 text-nigeria-green" />
+              </div>
+              <h2 className="text-xl font-black text-slate-900 text-center mb-1">Join {schoolName || 'this school'}?</h2>
+              <p className="text-sm text-slate-500 text-center mb-6 leading-relaxed">
+                You're already registered as an <strong>independent student</strong>. Would you like to migrate to <strong>{schoolName || 'this school'}</strong>?
+                <br /><br />
+                The school admin will review your request. If approved, 40% of your subscription fees will support the school.
+              </p>
+              <div className="space-y-3">
+                <button
+                  onClick={async () => {
+                    if (!userId || !schoolId) return;
+                    setMigrationLoading(true);
+                    try {
+                      const res = await fetch(`${API_BASE_URL}/api/schools/migration-request`, {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ uid: userId, school_id: schoolId })
+                      });
+                      const data = await res.json();
+                      if (res.ok) {
+                        setMigrationRequested(true);
+                        showToast("Migration request sent! The school admin will review it.", "success");
+                      } else {
+                        showToast(data.error || "Request failed", "error");
+                      }
+                    } catch (e) {
+                      showToast("Could not send request", "error");
+                    } finally {
+                      setMigrationLoading(false);
+                      setShowMigrationDialog(false);
+                    }
+                  }}
+                  disabled={migrationLoading}
+                  className="w-full bg-nigeria-green text-white py-4 rounded-2xl font-black shadow-lg active:scale-95 transition-all flex items-center justify-center gap-2"
+                >
+                  {migrationLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <UserPlus className="w-4 h-4" />}
+                  Migrate to {schoolName || 'School'}
+                </button>
+                <button
+                  onClick={() => {
+                    setShowMigrationDialog(false);
+                    navigate('/');
+                  }}
+                  className="w-full bg-slate-100 text-slate-700 py-4 rounded-2xl font-bold active:scale-95 transition-all flex items-center justify-center gap-2"
+                >
+                  <UserX className="w-4 h-4" />
+                  Remain Independent
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+
         {showDeleteModal && (
           <div className="fixed inset-0 z-[120] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
             <motion.div
@@ -3597,6 +3768,7 @@ export default function App() {
   const [loginStep, setLoginStep] = useState<'choice' | 'student' | 'return' | 'recover'>('choice');
   const [loginName, setLoginName] = useState('');
   const [returningCode, setReturningCode] = useState('');
+  const [newlyCreated, setNewlyCreated] = useState(false);
   const [recoveryName, setRecoveryName] = useState('');
   const [recoverySlug, setRecoverySlug] = useState('');
   const [recoveredCode, setRecoveredCode] = useState<string | null>(null);
@@ -3654,6 +3826,7 @@ export default function App() {
       if (res.ok) {
         const data = await res.json();
         setProfile(data);
+        if (data.newlyCreated) setNewlyCreated(true);
       }
     } catch (err) {
       console.error("Failed to fetch profile:", err);
@@ -3662,6 +3835,17 @@ export default function App() {
       setLoading(false);
     }
   };
+
+  // Pre-fill school slug in recover form if the user is on a school URL
+  useEffect(() => {
+    if (loginStep === 'recover' && !recoverySlug) {
+      const pathSegment = window.location.pathname.split('/').filter(Boolean)[0];
+      const knownRoutes = ['admin', 'payment-success'];
+      if (pathSegment && !knownRoutes.includes(pathSegment) && !pathSegment.includes('dashboard')) {
+        setRecoverySlug(pathSegment);
+      }
+    }
+  }, [loginStep]);
 
   const handleRecoverCode = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -3807,9 +3991,9 @@ export default function App() {
     <ErrorBoundary>
       <BrowserRouter>
         <Routes>
-          <Route path="/" element={<MainApp user={user} profile={profile} onLogin={() => { console.log("Login clicked"); setShowLoginModal(true); }} onLogout={handleLogout} refreshProfile={() => user && fetchProfile(user.uid)} showToast={showToast} showSettings={showSettings} setShowSettings={setShowSettings} />} />
+          <Route path="/" element={<MainApp user={user} profile={profile} onLogin={() => { console.log("Login clicked"); setShowLoginModal(true); }} onLogout={handleLogout} refreshProfile={() => user && fetchProfile(user.uid)} showToast={showToast} showSettings={showSettings} setShowSettings={setShowSettings} newlyCreated={newlyCreated} />} />
           <Route path="/admin" element={<AdminDashboard showToast={showToast} />} />
-          <Route path="/:school_slug" element={<MainApp user={user} profile={profile} onLogin={() => { console.log("Login clicked"); setShowLoginModal(true); }} onLogout={handleLogout} refreshProfile={() => user && fetchProfile(user.uid)} showToast={showToast} showSettings={showSettings} setShowSettings={setShowSettings} />} />
+          <Route path="/:school_slug" element={<MainApp user={user} profile={profile} onLogin={() => { console.log("Login clicked"); setShowLoginModal(true); }} onLogout={handleLogout} refreshProfile={() => user && fetchProfile(user.uid)} showToast={showToast} showSettings={showSettings} setShowSettings={setShowSettings} newlyCreated={newlyCreated} />} />
           <Route path="/:school_slug/dashboard" element={<SchoolDashboard showToast={showToast} />} />
         </Routes>
       </BrowserRouter>
