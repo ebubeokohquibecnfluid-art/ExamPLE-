@@ -1932,10 +1932,13 @@ function MainApp({ user, profile, onLogin, onLogout, refreshProfile, showToast, 
   const [usePidgin, setUsePidgin] = useState(false);
   const [loading, setLoading] = useState(false);
   const [audioLoading, setAudioLoading] = useState(false);
-  const [audioUrl, setAudioUrl] = useState<string | null>(null);
   const [activeAudioMessageId, setActiveAudioMessageId] = useState<string | null>(null);
   const [fallbackVoiceUsed, setFallbackVoiceUsed] = useState(false);
-  const audioRef = useRef<HTMLAudioElement | null>(null);
+  const audioCtxRef = useRef<AudioContext | null>(null);
+  const audioSourceRef = useRef<AudioBufferSourceNode | null>(null);
+  const audioBufferRef = useRef<AudioBuffer | null>(null);
+  const playbackStartRef = useRef<number>(0);
+  const playbackOffsetRef = useRef<number>(0);
   const [messages, setMessages] = useState<Message[]>([]);
   const [schoolName, setSchoolName] = useState<string | null>(null);
   const [schoolId, setSchoolId] = useState<string | null>(null);
@@ -2082,43 +2085,6 @@ function MainApp({ user, profile, onLogin, onLogout, refreshProfile, showToast, 
 
   const chatEndRef = useRef<HTMLDivElement>(null);
 
-  const createWavBlob = (pcmData: Int16Array, sampleRate: number) => {
-    const buffer = new ArrayBuffer(44 + pcmData.length * 2);
-    const view = new DataView(buffer);
-
-    // RIFF identifier
-    view.setUint32(0, 0x52494646, false);
-    // file length
-    view.setUint32(4, 36 + pcmData.length * 2, true);
-    // RIFF type
-    view.setUint32(8, 0x57415645, false);
-    // format chunk identifier
-    view.setUint32(12, 0x666d7420, false);
-    // format chunk length
-    view.setUint32(16, 16, true); 
-    // sample format (raw)
-    view.setUint16(20, 1, true);
-    // channel count
-    view.setUint16(22, 1, true);
-    // sample rate
-    view.setUint32(24, sampleRate, true);
-    // byte rate (sample rate * block align)
-    view.setUint32(28, sampleRate * 2, true);
-    // block align (channel count * bytes per sample)
-    view.setUint16(32, 2, true);
-    // bits per sample
-    view.setUint16(34, 16, true);
-    // data chunk identifier
-    view.setUint32(36, 0x64617461, false);
-    // data chunk length
-    view.setUint32(40, pcmData.length * 2, true);
-
-    for (let i = 0; i < pcmData.length; i++) {
-      view.setInt16(44 + i * 2, pcmData[i], true);
-    }
-
-    return new Blob([buffer], { type: 'audio/wav' });
-  };
 
   // Load School Context
   useEffect(() => {
@@ -2373,31 +2339,72 @@ function MainApp({ user, profile, onLogin, onLogout, refreshProfile, showToast, 
     }
   };
 
+  // --- Web Audio API helpers (work reliably on mobile after async fetches) ---
+  const getAudioCtx = () => {
+    if (!audioCtxRef.current) {
+      audioCtxRef.current = new (window.AudioContext || (window as any).webkitAudioContext)();
+    }
+    return audioCtxRef.current;
+  };
+
+  const stopCurrentSource = () => {
+    if (audioSourceRef.current) {
+      try { audioSourceRef.current.stop(); } catch {}
+      audioSourceRef.current = null;
+    }
+  };
+
+  const startBufferPlayback = (ctx: AudioContext, buffer: AudioBuffer, offset: number) => {
+    stopCurrentSource();
+    const source = ctx.createBufferSource();
+    source.buffer = buffer;
+    source.connect(ctx.destination);
+    source.onended = () => {
+      if (audioSourceRef.current === source) {
+        audioSourceRef.current = null;
+        playbackOffsetRef.current = 0;
+        setIsPlaying(false);
+        setActiveAudioMessageId(null);
+        setFallbackVoiceUsed(false);
+      }
+    };
+    audioSourceRef.current = source;
+    playbackStartRef.current = ctx.currentTime;
+    source.start(0, offset);
+    setIsPlaying(true);
+  };
+
   const playAudio = async (text: string, messageId: string) => {
+    const ctx = getAudioCtx();
+
+    // Unlock AudioContext during user gesture — must happen before any await
+    if (ctx.state === 'suspended') ctx.resume();
+
+    // Toggle pause/resume for same message
     if (activeAudioMessageId === messageId) {
       if (isPlaying) {
-        audioRef.current?.pause();
+        // Pause: snapshot how far we got
+        playbackOffsetRef.current += ctx.currentTime - playbackStartRef.current;
+        stopCurrentSource();
         setIsPlaying(false);
-      } else {
-        audioRef.current?.play();
-        setIsPlaying(true);
+      } else if (audioBufferRef.current) {
+        // Resume from saved offset
+        startBufferPlayback(ctx, audioBufferRef.current, playbackOffsetRef.current);
       }
       return;
     }
 
-    // Stop previous audio
-    if (audioRef.current) {
-      audioRef.current.pause();
-      audioRef.current = null;
-    }
-    if (audioUrl) {
-      URL.revokeObjectURL(audioUrl);
-    }
+    // New message — stop whatever was playing
+    stopCurrentSource();
+    window.speechSynthesis?.cancel();
+    playbackOffsetRef.current = 0;
+    audioBufferRef.current = null;
 
     setAudioLoading(true);
     setActiveAudioMessageId(messageId);
     setFallbackVoiceUsed(false);
-    
+    setIsPlaying(false);
+
     try {
       const res = await fetch(`${API_BASE_URL}/get-audio`, {
         method: "POST",
@@ -2405,52 +2412,31 @@ function MainApp({ user, profile, onLogin, onLogout, refreshProfile, showToast, 
         body: JSON.stringify({ text, usePidgin, user_id: userId })
       });
       const data = await res.json();
-      setFallbackVoiceUsed(data.fallbackUsed === true);
-      
+
       if (data.audio) {
-        let blob: Blob;
-        
-        if (data.mimeType === 'audio/mpeg') {
-          // Direct MP3 from Cloud TTS
-          const audioBytes = Uint8Array.from(atob(data.audio), c => c.charCodeAt(0));
-          blob = new Blob([audioBytes], { type: 'audio/mpeg' });
+        const rawBytes = Uint8Array.from(atob(data.audio), c => c.charCodeAt(0));
+        let audioBuffer: AudioBuffer;
+
+        if (data.mimeType === 'audio/pcm' || !data.mimeType) {
+          // Raw signed 16-bit LE mono PCM at 24 kHz — decode directly, no WAV wrapper needed
+          const int16 = new Int16Array(rawBytes.buffer);
+          audioBuffer = ctx.createBuffer(1, int16.length, 24000);
+          const channel = audioBuffer.getChannelData(0);
+          for (let i = 0; i < int16.length; i++) channel[i] = int16[i] / 32768;
         } else {
-          // Fallback raw PCM from Gemini
-          const audioData = Uint8Array.from(atob(data.audio), c => c.charCodeAt(0)).buffer;
-          const int16Array = new Int16Array(audioData);
-          blob = createWavBlob(int16Array, 24000);
+          // Encoded format (mp3, ogg, etc.) — let the browser decode it
+          audioBuffer = await ctx.decodeAudioData(rawBytes.buffer.slice(0));
         }
-        
-        const url = URL.createObjectURL(blob);
-        
-        const audio = new Audio(url);
-        audio.preload = "auto";
-        audioRef.current = audio;
-        setAudioUrl(url);
-        
-        audio.onended = () => {
-          setIsPlaying(false);
-          setActiveAudioMessageId(null);
-          setFallbackVoiceUsed(false);
-        };
 
-        audio.onerror = (e) => {
-          console.error("Audio playback error:", e);
-          setError("Audio playback interrupted.");
-          setIsPlaying(false);
-          setActiveAudioMessageId(null);
-          setFallbackVoiceUsed(false);
-        };
-
-        await audio.play();
-        setIsPlaying(true);
+        audioBufferRef.current = audioBuffer;
+        setFallbackVoiceUsed(data.fallbackUsed === true);
+        startBufferPlayback(ctx, audioBuffer, 0);
       } else {
-        // Server TTS unavailable — fall back to browser speech synthesis
+        // Gemini TTS unavailable — fall back to browser speech synthesis
         if ('speechSynthesis' in window) {
-          window.speechSynthesis.cancel();
-          const cleanText = text.replace(/#+\s/g, '').replace(/\*/g, '').slice(0, 500);
+          const cleanText = text.replace(/#+\s/g, '').replace(/[*_`]/g, '').trim().slice(0, 600);
           const utterance = new SpeechSynthesisUtterance(cleanText);
-          utterance.rate = 0.95;
+          utterance.rate = 0.92;
           utterance.pitch = 1.05;
           utterance.onend = () => { setIsPlaying(false); setActiveAudioMessageId(null); };
           utterance.onerror = () => { setIsPlaying(false); setActiveAudioMessageId(null); };
@@ -2458,31 +2444,36 @@ function MainApp({ user, profile, onLogin, onLogout, refreshProfile, showToast, 
           setIsPlaying(true);
           setFallbackVoiceUsed(true);
         } else {
-          setError(data.error || "Voice generation unavailable.");
+          setError(data.error || "Voice unavailable.");
           setActiveAudioMessageId(null);
         }
       }
     } catch (err: any) {
       console.error("Audio error:", err);
-      setError(err.message || "Could not play audio.");
+      setError("Could not load audio. Please try again.");
       setActiveAudioMessageId(null);
-      setFallbackVoiceUsed(false);
     } finally {
       setAudioLoading(false);
     }
   };
 
   const seekAudio = (seconds: number) => {
-    if (audioRef.current) {
-      audioRef.current.currentTime = Math.max(0, Math.min(audioRef.current.duration, audioRef.current.currentTime + seconds));
-    }
+    const ctx = audioCtxRef.current;
+    const buffer = audioBufferRef.current;
+    if (!ctx || !buffer) return;
+    const currentOffset = isPlaying
+      ? playbackOffsetRef.current + (ctx.currentTime - playbackStartRef.current)
+      : playbackOffsetRef.current;
+    const newOffset = Math.max(0, Math.min(buffer.duration, currentOffset + seconds));
+    playbackOffsetRef.current = newOffset;
+    if (isPlaying) startBufferPlayback(ctx, buffer, newOffset);
   };
 
   const stopAudio = () => {
-    if (audioRef.current) {
-      audioRef.current.pause();
-      audioRef.current = null;
-    }
+    stopCurrentSource();
+    window.speechSynthesis?.cancel();
+    playbackOffsetRef.current = 0;
+    audioBufferRef.current = null;
     setIsPlaying(false);
     setActiveAudioMessageId(null);
     setFallbackVoiceUsed(false);
