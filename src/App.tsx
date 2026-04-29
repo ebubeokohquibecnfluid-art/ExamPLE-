@@ -911,6 +911,9 @@ function SchoolDashboard({ showToast }: { showToast: (msg: string, type?: 'succe
   const [showCustomForm, setShowCustomForm] = useState(false);
   const [uploadingLogo, setUploadingLogo] = useState(false);
   const logoInputRef = useRef<HTMLInputElement>(null);
+  const [customHeaderImage, setCustomHeaderImage] = useState('');
+  const [uploadingHeader, setUploadingHeader] = useState(false);
+  const headerInputRef = useRef<HTMLInputElement>(null);
   const [migrationRequests, setMigrationRequests] = useState<any[]>([]);
   const [decidingId, setDecidingId] = useState<string | null>(null);
 
@@ -961,6 +964,7 @@ function SchoolDashboard({ showToast }: { showToast: (msg: string, type?: 'succe
       setCustomColor(data.primary_color || '#008751');
       setCustomLogo(data.logo_url || '');
       setCustomTagline(data.tagline || '');
+      setCustomHeaderImage(data.header_image_url || '');
     }
   }, [data]);
 
@@ -1083,7 +1087,7 @@ function SchoolDashboard({ showToast }: { showToast: (msg: string, type?: 'succe
       const res = await fetch(`${API_BASE_URL}/api/schools/save-customization`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ school_slug, password: savedPwd, primary_color: customColor, logo_url: customLogo, tagline: customTagline })
+        body: JSON.stringify({ school_slug, password: savedPwd, primary_color: customColor, logo_url: customLogo, tagline: customTagline, header_image_url: customHeaderImage })
       });
       const result = await res.json();
       if (res.ok) {
@@ -1111,6 +1115,22 @@ function SchoolDashboard({ showToast }: { showToast: (msg: string, type?: 'succe
       else showToast(data.error || "Upload failed", "error");
     } catch { showToast("Upload failed", "error"); }
     finally { setUploadingLogo(false); if (logoInputRef.current) logoInputRef.current.value = ''; }
+  };
+
+  const handleHeaderUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (file.size > 5 * 1024 * 1024) { showToast("Header image must be under 5 MB", "error"); return; }
+    setUploadingHeader(true);
+    try {
+      const formData = new FormData();
+      formData.append('header', file);
+      const res = await fetch(`${API_BASE_URL}/api/schools/upload-header`, { method: 'POST', body: formData });
+      const result = await res.json();
+      if (res.ok) { setCustomHeaderImage(result.header_image_url); showToast("Header image uploaded!", "success"); }
+      else showToast(result.error || "Upload failed", "error");
+    } catch { showToast("Upload failed", "error"); }
+    finally { setUploadingHeader(false); if (headerInputRef.current) headerInputRef.current.value = ''; }
   };
 
   if (loading) {
@@ -1276,20 +1296,34 @@ function SchoolDashboard({ showToast }: { showToast: (msg: string, type?: 'succe
         </div>
       )}
       {/* Header */}
-      <header className="bg-white border-b border-slate-200 px-6 py-4 flex items-center justify-between sticky top-0 z-20">
-        <div className="flex items-center gap-3">
-          <div className="bg-nigeria-green p-2 rounded-xl">
+      <header
+        className="px-6 py-4 flex items-center justify-between sticky top-0 z-20 relative overflow-hidden border-b"
+        style={{
+          backgroundColor: dashboardLogoUrl ? customColor : '#fff',
+          borderColor: dashboardLogoUrl ? 'transparent' : '#e2e8f0',
+          ...(customHeaderImage ? {
+            backgroundImage: `url(${customHeaderImage})`,
+            backgroundSize: 'cover',
+            backgroundPosition: 'center',
+          } : {})
+        }}
+      >
+        {customHeaderImage && (
+          <div className="absolute inset-0 bg-black/50" aria-hidden="true" />
+        )}
+        <div className="flex items-center gap-3 relative z-10">
+          <div className="p-2 rounded-xl" style={{ backgroundColor: customHeaderImage ? 'rgba(255,255,255,0.2)' : customColor }}>
             <GraduationCap className="w-6 h-6 text-white" />
           </div>
           <div>
-            <h1 className="text-lg font-black text-slate-900 leading-tight">ExamPLE Dashboard 🎓</h1>
-            <p className="text-xs text-slate-500 font-medium">School: {data.school_name} 🏫</p>
+            <h1 className={`text-lg font-black leading-tight ${customHeaderImage ? 'text-white' : 'text-slate-900'}`}>ExamPLE Dashboard 🎓</h1>
+            <p className={`text-xs font-medium ${customHeaderImage ? 'text-white/80' : 'text-slate-500'}`}>School: {data.school_name} 🏫</p>
           </div>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 relative z-10">
           <Link 
             to={`/${school_slug}`}
-            className="bg-slate-100 hover:bg-slate-200 text-slate-700 px-4 py-2 rounded-xl text-xs font-bold flex items-center gap-2 transition-all"
+            className={`px-4 py-2 rounded-xl text-xs font-bold flex items-center gap-2 transition-all ${customHeaderImage ? 'bg-white/20 hover:bg-white/30 text-white' : 'bg-slate-100 hover:bg-slate-200 text-slate-700'}`}
           >
             Student App <ArrowRight className="w-3 h-3" />
           </Link>
@@ -1298,7 +1332,7 @@ function SchoolDashboard({ showToast }: { showToast: (msg: string, type?: 'succe
               localStorage.removeItem(`school_auth_${school_slug}`);
               setIsLoggedIn(false);
             }}
-            className="p-2 hover:bg-slate-100 rounded-xl text-slate-400 hover:text-red-500 transition-all"
+            className={`p-2 rounded-xl transition-all ${customHeaderImage ? 'text-white/70 hover:bg-white/20 hover:text-white' : 'text-slate-400 hover:bg-slate-100 hover:text-red-500'}`}
             title="Logout"
           >
             <LogOut className="w-5 h-5" />
@@ -1547,6 +1581,34 @@ function SchoolDashboard({ showToast }: { showToast: (msg: string, type?: 'succe
                   )}
                 </div>
                 <p className="text-[10px] text-slate-400 ml-1">PNG, JPG or SVG · Max 2 MB</p>
+              </div>
+              <div className="space-y-1">
+                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Header Image (optional)</label>
+                <p className="text-[10px] text-slate-400 ml-1 mb-2">Replaces the colour bar — use a school banner or photo</p>
+                <input ref={headerInputRef} type="file" accept="image/*" onChange={handleHeaderUpload} className="hidden" />
+                {customHeaderImage ? (
+                  <div className="relative rounded-xl overflow-hidden border border-slate-200 h-20">
+                    <img src={customHeaderImage} alt="Header preview" className="w-full h-full object-cover" />
+                    <button
+                      type="button"
+                      onClick={() => setCustomHeaderImage('')}
+                      className="absolute top-1.5 right-1.5 bg-black/60 text-white rounded-full p-1 hover:bg-black/80 transition-all"
+                    >
+                      <X className="w-3 h-3" />
+                    </button>
+                  </div>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => headerInputRef.current?.click()}
+                    disabled={uploadingHeader}
+                    className="w-full flex items-center justify-center gap-2 bg-slate-50 border border-dashed border-slate-300 rounded-xl px-4 py-4 text-sm text-slate-500 hover:bg-slate-100 transition-all disabled:opacity-50"
+                  >
+                    {uploadingHeader ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />}
+                    {uploadingHeader ? 'Uploading…' : 'Upload Header Image'}
+                  </button>
+                )}
+                <p className="text-[10px] text-slate-400 ml-1">PNG, JPG · Max 5 MB · Wide/landscape images work best</p>
               </div>
               <div className="space-y-1">
                 <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Tagline (optional)</label>
@@ -2464,10 +2526,20 @@ function MainApp({ user, profile, onLogin, onLogout, refreshProfile, showToast, 
       )}
       {/* Header */}
       <header
-        className="text-white px-4 py-3 flex items-center justify-between shadow-md z-20"
-        style={{ backgroundColor: profile?.school?.primary_color || '#008751' }}
+        className="text-white px-4 py-3 flex items-center justify-between shadow-md z-20 relative overflow-hidden"
+        style={{
+          backgroundColor: profile?.school?.primary_color || '#008751',
+          ...(profile?.school?.header_image_url ? {
+            backgroundImage: `url(${profile.school.header_image_url})`,
+            backgroundSize: 'cover',
+            backgroundPosition: 'center',
+          } : {})
+        }}
       >
-        <div className="flex items-center gap-3">
+        {profile?.school?.header_image_url && (
+          <div className="absolute inset-0 bg-black/45" aria-hidden="true" />
+        )}
+        <div className="flex items-center gap-3 relative z-10">
           {profile?.school?.logo_url ? (
             <img
               src={profile.school.logo_url}
@@ -2489,7 +2561,7 @@ function MainApp({ user, profile, onLogin, onLogout, refreshProfile, showToast, 
             </p>
           </div>
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-3 relative z-10">
           {user && (
             <button 
               onClick={() => setShowTopUp(true)}

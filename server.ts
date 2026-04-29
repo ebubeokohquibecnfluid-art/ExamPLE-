@@ -31,6 +31,22 @@ const uploadLogo = multer({
   }
 });
 
+const headerStorage = multer.diskStorage({
+  destination: (_req, _file, cb) => cb(null, UPLOADS_DIR),
+  filename: (_req, file, cb) => {
+    const ext = path.extname(file.originalname).toLowerCase() || '.jpg';
+    cb(null, `header_${Date.now()}${ext}`);
+  }
+});
+const uploadHeader = multer({
+  storage: headerStorage,
+  limits: { fileSize: 5 * 1024 * 1024 },
+  fileFilter: (_req, file, cb) => {
+    if (file.mimetype.startsWith('image/')) cb(null, true);
+    else cb(new Error('Only image files are allowed'));
+  }
+});
+
 // --- 1. CORS CONFIGURATION ---
 app.use(cors());
 app.use('/uploads', express.static(path.join(process.cwd(), 'uploads')));
@@ -192,7 +208,7 @@ app.post("/api/auth/simple", async (req, res) => {
     let schoolMeta = null;
     if (fresh && fresh.schoolId) {
       schoolMeta = await db.get(
-        "SELECT school_name, school_slug, primary_color, logo_url, tagline FROM schools WHERE school_id = ?",
+        "SELECT school_name, school_slug, primary_color, logo_url, tagline, header_image_url FROM schools WHERE school_id = ?",
         [fresh.schoolId]
       );
     }
@@ -687,7 +703,7 @@ app.get("/api/schools/by-slug/:slug", async (req, res) => {
   if (!db) return res.status(500).json({ error: "DB missing" });
   try {
     const school = await db.get(
-      "SELECT school_id, school_name, school_slug, referral_code, primary_color, logo_url, tagline FROM schools WHERE school_slug = ?",
+      "SELECT school_id, school_name, school_slug, referral_code, primary_color, logo_url, tagline, header_image_url FROM schools WHERE school_slug = ?",
       [slug]
     );
     if (school) res.json(school);
@@ -778,17 +794,17 @@ app.post("/api/schools/migration-requests/:id/decide", async (req, res) => {
   }
 });
 
-// Save school customisation (color, logo, tagline)
+// Save school customisation (color, logo, tagline, header_image)
 app.post("/api/schools/save-customization", async (req, res) => {
-  const { school_slug, password, primary_color, logo_url, tagline } = req.body;
+  const { school_slug, password, primary_color, logo_url, tagline, header_image_url } = req.body;
   if (!db || !school_slug || !password) return res.status(400).json({ error: "Missing data" });
   try {
     const school = await db.get("SELECT * FROM schools WHERE school_slug = ?", [school_slug]);
     if (!school) return res.status(404).json({ error: "School not found" });
     if (school.password !== password) return res.status(401).json({ error: "Invalid password" });
     await db.run(
-      "UPDATE schools SET primary_color = ?, logo_url = ?, tagline = ? WHERE school_slug = ?",
-      [primary_color || '#008751', logo_url || null, tagline || null, school_slug]
+      "UPDATE schools SET primary_color = ?, logo_url = ?, tagline = ?, header_image_url = ? WHERE school_slug = ?",
+      [primary_color || '#008751', logo_url || null, tagline || null, header_image_url || null, school_slug]
     );
     res.json({ success: true });
   } catch (err) { res.status(500).json({ error: "Customisation save failed" }); }
@@ -799,6 +815,13 @@ app.post("/api/schools/upload-logo", uploadLogo.single('logo'), async (req: any,
   if (!req.file) return res.status(400).json({ error: "No file uploaded" });
   const logoUrl = `${req.protocol}://${req.get('host')}/uploads/logos/${req.file.filename}`;
   res.json({ success: true, logo_url: logoUrl });
+});
+
+// Upload school header image
+app.post("/api/schools/upload-header", uploadHeader.single('header'), async (req: any, res) => {
+  if (!req.file) return res.status(400).json({ error: "No file uploaded" });
+  const headerUrl = `${req.protocol}://${req.get('host')}/uploads/logos/${req.file.filename}`;
+  res.json({ success: true, header_image_url: headerUrl });
 });
 
 // Account deletion
