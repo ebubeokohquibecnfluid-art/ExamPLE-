@@ -398,7 +398,7 @@ app.post("/api/transcribe", async (req, res) => {
     const mimeType = mimeMatch ? mimeMatch[1] : 'audio/webm';
     const base64Data = audioBase64.replace(/^data:[^;]+;base64,/, '');
     const response = await ai.models.generateContent({
-      model: "gemini-2.0-flash",
+      model: PRIMARY_MODEL,
       contents: [{
         parts: [
           { inlineData: { mimeType, data: base64Data } },
