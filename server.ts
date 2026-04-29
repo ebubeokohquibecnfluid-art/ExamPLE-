@@ -216,6 +216,18 @@ app.post("/api/auth/simple", async (req, res) => {
   } catch (err) { res.status(500).json({ error: "Auth failed" }); }
 });
 
+// Save / update a student's email address (for payment receipts)
+app.post("/api/user/save-email", async (req, res) => {
+  const { uid, email } = req.body;
+  if (!db || !uid || !email) return res.status(400).json({ error: "Missing uid or email" });
+  const clean = String(email).toLowerCase().trim();
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(clean)) return res.status(400).json({ error: "Invalid email" });
+  try {
+    await db.run("UPDATE users SET email = ? WHERE uid = ?", [clean, uid]);
+    res.json({ success: true, email: clean });
+  } catch (err) { res.status(500).json({ error: "Could not save email" }); }
+});
+
 // School Password Reset
 app.post("/api/schools/reset-password", async (req, res) => {
   const { referral_code, new_password } = req.body;

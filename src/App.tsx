@@ -1872,6 +1872,8 @@ function MainApp({ user, profile, onLogin, onLogout, refreshProfile, showToast, 
   
   // Modals
   const [showTopUp, setShowTopUp] = useState(false);
+  const [paymentEmail, setPaymentEmail] = useState('');
+  const [savingEmail, setSavingEmail] = useState(false);
   const [showSchoolReg, setShowSchoolReg] = useState(false);
   const [registeredSchool, setRegisteredSchool] = useState<any>(null);
   const [pendingPlan, setPendingPlan] = useState<{ name: string; price: number; credits: number } | null>(null);
@@ -2393,9 +2395,27 @@ function MainApp({ user, profile, onLogin, onLogout, refreshProfile, showToast, 
   };
 
   const handleBuyCredits = async (plan: string, amount: number, creditsToAdd: number) => {
-    if (!user?.email) {
-      showToast("Please log in to buy credits", "error");
+    if (!user) { showToast("Please log in to buy credits", "error"); return; }
+
+    // Use stored profile email, or the one just entered in the modal
+    const emailToUse = (profile?.email as string) || paymentEmail.trim();
+    if (!emailToUse) {
+      showToast("Please enter your email address for the receipt", "error");
       return;
+    }
+
+    // Persist the email if it wasn't already saved
+    if (!profile?.email && emailToUse && userId) {
+      setSavingEmail(true);
+      try {
+        await fetch(`${API_BASE_URL}/api/user/save-email`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ uid: userId, email: emailToUse })
+        });
+        await refreshProfile();
+      } catch { /* proceed anyway */ }
+      finally { setSavingEmail(false); }
     }
 
     try {
@@ -2403,18 +2423,15 @@ function MainApp({ user, profile, onLogin, onLogout, refreshProfile, showToast, 
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          email: user.email,
+          email: emailToUse,
           amount,
           userId: userId,
           planName: plan,
           callbackBase: window.location.origin
         })
       });
-      
       const data = await res.json();
-      
       if (data.status && data.data.authorization_url) {
-        // Redirect to Paystack checkout
         window.location.href = data.data.authorization_url;
       } else {
         throw new Error(data.message || "Failed to initialize payment");
@@ -3417,6 +3434,25 @@ function MainApp({ user, profile, onLogin, onLogout, refreshProfile, showToast, 
                 </p>
               </div>
 
+              {/* Email field — only shown if student hasn't saved an email yet */}
+              {!(profile?.email as string) && (
+                <div className="mb-6 space-y-1.5">
+                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">
+                    Email for receipt
+                  </label>
+                  <input
+                    type="email"
+                    placeholder="yourname@email.com"
+                    value={paymentEmail}
+                    onChange={e => setPaymentEmail(e.target.value)}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-4 py-3 text-sm focus:ring-2 focus:ring-nigeria-green/20 focus:border-nigeria-green outline-none"
+                  />
+                  <p className="text-[10px] text-slate-400 ml-1">
+                    Paystack sends your receipt here. Saved once — never asked again.
+                  </p>
+                </div>
+              )}
+
               <div className="space-y-3">
                 {[
                   { name: 'Basic', price: 2500, credits: 50, color: 'bg-blue-50 border-blue-100 text-blue-700' },
@@ -3427,8 +3463,9 @@ function MainApp({ user, profile, onLogin, onLogout, refreshProfile, showToast, 
                   <button
                     key={plan.name}
                     onClick={() => handleBuyCredits(plan.name, plan.price, plan.credits)}
+                    disabled={savingEmail || (!(profile?.email as string) && !paymentEmail.trim())}
                     className={cn(
-                      "w-full p-5 rounded-3xl border-2 flex items-center justify-between transition-all hover:scale-[1.02] active:scale-[0.98]",
+                      "w-full p-5 rounded-3xl border-2 flex items-center justify-between transition-all hover:scale-[1.02] active:scale-[0.98] disabled:opacity-40 disabled:scale-100 disabled:cursor-not-allowed",
                       plan.color
                     )}
                   >
@@ -3445,6 +3482,11 @@ function MainApp({ user, profile, onLogin, onLogout, refreshProfile, showToast, 
                   </button>
                 ))}
               </div>
+              {(profile?.email as string) && (
+                <p className="text-[10px] text-slate-400 text-center mt-3">
+                  Receipt goes to: <span className="font-bold text-slate-600">{profile?.email as string}</span>
+                </p>
+              )}
             </motion.div>
           </div>
         )}
