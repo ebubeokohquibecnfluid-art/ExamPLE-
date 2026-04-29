@@ -306,7 +306,7 @@ async function processPayment(opts: {
     "SELECT displayname, schoolId FROM users WHERE uid = ?",
     [userId]
   );
-  const userName = user?.displayname || userEmail;
+  const userName = user?.displayName || user?.displayname || userEmail;
   const schoolId = user?.schoolId || null;
 
   // Fetch school details if applicable
@@ -553,8 +553,7 @@ app.post("/api/transcribe", async (req, res) => {
     const mimeMatch = audioBase64.match(/^data:([^;]+);base64,/);
     const mimeType = mimeMatch ? mimeMatch[1] : 'audio/webm';
     const base64Data = audioBase64.replace(/^data:[^;]+;base64,/, '');
-    const response = await ai.models.generateContent({
-      model: PRIMARY_MODEL,
+    const response = await generateWithRetry({
       contents: [{
         parts: [
           { inlineData: { mimeType, data: base64Data } },
@@ -998,11 +997,13 @@ app.post("/school-login", async (req, res) => {
 });
 
 app.post("/school-dashboard", async (req, res) => {
-  const { school_slug } = req.body;
+  const { school_slug, password } = req.body;
   if (!db) return res.status(500).json({ error: "DB missing" });
+  if (!school_slug || !password) return res.status(400).json({ error: "Missing credentials" });
   try {
     const school = await db.get("SELECT * FROM schools WHERE school_slug = ?", [school_slug]);
     if (!school) return res.status(404).json({ error: "School not found" });
+    if (school.password !== password) return res.status(401).json({ error: "Invalid password" });
     
     const withdrawals = await db.all("SELECT * FROM withdrawals WHERE school_id = ?", [school.school_id]);
     const students = await db.all(

@@ -920,18 +920,18 @@ function SchoolDashboard({ showToast }: { showToast: (msg: string, type?: 'succe
   const [loadingPayments, setLoadingPayments] = useState(false);
 
   const fetchDashboard = async () => {
+    const savedPwd = localStorage.getItem(`school_pwd_${school_slug}`) || '';
     try {
       const res = await fetch(`${API_BASE_URL}/school-dashboard`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ school_slug })
+        body: JSON.stringify({ school_slug, password: savedPwd })
       });
       
       if (res.ok) {
         const result = await res.json();
         setData(result);
         // Also fetch migration requests
-        const savedPwd = localStorage.getItem(`school_pwd_${school_slug}`) || '';
         if (result.school_id && savedPwd) {
           fetch(`${API_BASE_URL}/api/schools/${result.school_id}/migration-requests`, {
             method: "POST",
@@ -941,6 +941,11 @@ function SchoolDashboard({ showToast }: { showToast: (msg: string, type?: 'succe
             if (d.requests) setMigrationRequests(d.requests);
           }).catch(() => {});
         }
+      } else if (res.status === 401) {
+        // Password no longer valid — clear saved auth and show login
+        localStorage.removeItem(`school_auth_${school_slug}`);
+        localStorage.removeItem(`school_pwd_${school_slug}`);
+        setIsLoggedIn(false);
       } else {
         setError("School not found");
       }
