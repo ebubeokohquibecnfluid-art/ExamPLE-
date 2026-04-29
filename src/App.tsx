@@ -1969,6 +1969,7 @@ function MainApp({ user, profile, onLogin, onLogout, refreshProfile, showToast, 
   const [editingName, setEditingName] = useState(false);
   const [newNameInput, setNewNameInput] = useState('');
   const [nameUpdating, setNameUpdating] = useState(false);
+  const [localDisplayName, setLocalDisplayName] = useState<string | null>(null);
 
   const [isRecording, setIsRecording] = useState(false);
   const [transcribing, setTranscribing] = useState(false);
@@ -2068,9 +2069,13 @@ function MainApp({ user, profile, onLogin, onLogout, refreshProfile, showToast, 
       });
       const data = await res.json();
       if (data.success) {
-        const updated = { ...user, displayName: data.displayName };
-        localStorage.setItem('exam_user', JSON.stringify(updated));
-        setUser(updated as any);
+        setLocalDisplayName(data.displayName);
+        const saved = localStorage.getItem('exam_user');
+        if (saved) {
+          const parsed = JSON.parse(saved);
+          parsed.displayName = data.displayName;
+          localStorage.setItem('exam_user', JSON.stringify(parsed));
+        }
         setEditingName(false);
         setNewNameInput('');
         showToast('Name updated!', 'success');
@@ -3735,11 +3740,11 @@ function MainApp({ user, profile, onLogin, onLogout, refreshProfile, showToast, 
                           </div>
                         ) : (
                           <button
-                            onClick={() => { setNewNameInput(user.displayName || ''); setEditingName(true); }}
+                            onClick={() => { setNewNameInput(localDisplayName || user.displayName || ''); setEditingName(true); }}
                             className="flex items-center gap-1.5 group text-left w-full"
                             title="Tap to change name"
                           >
-                            <p className="text-sm font-bold text-slate-800 truncate group-hover:text-nigeria-green transition-colors">{user.displayName}</p>
+                            <p className="text-sm font-bold text-slate-800 truncate group-hover:text-nigeria-green transition-colors">{localDisplayName || user.displayName}</p>
                             <Pencil className="w-3 h-3 text-slate-400 group-hover:text-nigeria-green flex-shrink-0 transition-colors" />
                           </button>
                         )}
