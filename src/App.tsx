@@ -946,11 +946,13 @@ function SchoolDashboard({ showToast }: { showToast: (msg: string, type?: 'succe
         localStorage.removeItem(`school_auth_${school_slug}`);
         localStorage.removeItem(`school_pwd_${school_slug}`);
         setIsLoggedIn(false);
+      } else if (res.status === 404) {
+        setError("not_found");
       } else {
-        setError("School not found");
+        setError("server_error");
       }
     } catch (err) {
-      setError("Could not load dashboard");
+      setError("server_error");
     } finally {
       setLoading(false);
     }
@@ -1277,16 +1279,46 @@ function SchoolDashboard({ showToast }: { showToast: (msg: string, type?: 'succe
   }
 
   if (error) {
+    const isNotFound = error === "not_found";
     return (
       <div className="h-screen flex flex-col items-center justify-center bg-slate-50 p-6 text-center">
         <div className="bg-red-100 p-4 rounded-full mb-4">
           <X className="w-8 h-8 text-red-600" />
         </div>
-        <h2 className="text-2xl font-black text-slate-900 mb-2">{error}</h2>
-        <p className="text-slate-500 mb-6">Please check the URL or contact support.</p>
-        <Link to="/" className="bg-nigeria-green text-white px-8 py-3 rounded-2xl font-bold shadow-lg shadow-green-900/10">
-          Go Home
-        </Link>
+        <h2 className="text-2xl font-black text-slate-900 mb-2">
+          {isNotFound ? "School not found" : "Could not load dashboard"}
+        </h2>
+        {isNotFound ? (
+          <div className="max-w-sm text-left mb-6">
+            <p className="text-slate-500 text-sm mb-3 text-center">
+              The URL <code className="bg-slate-100 px-1 rounded text-xs break-all">{window.location.pathname}</code> does not match any registered school.
+            </p>
+            <p className="text-slate-500 text-sm mb-3 text-center">
+              If you are the school admin, your dashboard URL was shown when you registered. It looks like:
+            </p>
+            <code className="block bg-slate-100 rounded-xl px-4 py-3 text-xs text-slate-700 text-center break-all mb-3">
+              exam-ple.xyz/<strong>your-school-name</strong>/dashboard
+            </code>
+            <p className="text-slate-500 text-xs text-center">
+              The URL is based on the exact school name you typed when registering. Contact support if you cannot find it.
+            </p>
+          </div>
+        ) : (
+          <p className="text-slate-500 mb-6 text-sm">Connection error — please try again or contact support.</p>
+        )}
+        <div className="flex flex-col gap-3 w-full max-w-xs">
+          {!isNotFound && (
+            <button
+              onClick={() => { setError(null); setLoading(true); fetchDashboard(); }}
+              className="bg-nigeria-green text-white px-8 py-3 rounded-2xl font-bold shadow-lg shadow-green-900/10"
+            >
+              Try Again
+            </button>
+          )}
+          <Link to="/" className="bg-slate-200 text-slate-700 px-8 py-3 rounded-2xl font-bold">
+            Go Home
+          </Link>
+        </div>
       </div>
     );
   }
@@ -1400,6 +1432,37 @@ function SchoolDashboard({ showToast }: { showToast: (msg: string, type?: 'succe
             <div>
               <p className="text-[10px] font-black text-white/60 uppercase tracking-widest mb-1">Total Earnings</p>
               <p className="text-2xl font-black">₦{data.total_earnings.toLocaleString()}</p>
+            </div>
+          </div>
+        </div>
+
+        {/* School Links */}
+        <div className="bg-white p-6 rounded-[32px] border border-slate-200 shadow-sm">
+          <h3 className="text-sm font-black text-slate-900 mb-3">Your School Links</h3>
+          <div className="space-y-3">
+            <div>
+              <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Student Portal</p>
+              <div className="flex items-center gap-2 bg-slate-50 rounded-2xl px-4 py-2">
+                <code className="text-xs text-slate-600 flex-1 break-all">exam-ple.xyz/{school_slug}</code>
+                <button
+                  onClick={() => { navigator.clipboard.writeText(`https://exam-ple.xyz/${school_slug}`); showToast("Portal link copied!", "success"); }}
+                  className="flex-shrink-0 p-1.5 hover:bg-slate-200 rounded-lg text-nigeria-green"
+                >
+                  <Copy className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            </div>
+            <div>
+              <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Your Dashboard</p>
+              <div className="flex items-center gap-2 bg-slate-50 rounded-2xl px-4 py-2">
+                <code className="text-xs text-slate-600 flex-1 break-all">exam-ple.xyz/{school_slug}/dashboard</code>
+                <button
+                  onClick={() => { navigator.clipboard.writeText(`https://exam-ple.xyz/${school_slug}/dashboard`); showToast("Dashboard link copied!", "success"); }}
+                  className="flex-shrink-0 p-1.5 hover:bg-slate-200 rounded-lg text-nigeria-green"
+                >
+                  <Copy className="w-3.5 h-3.5" />
+                </button>
+              </div>
             </div>
           </div>
         </div>
@@ -3707,17 +3770,34 @@ function MainApp({ user, profile, onLogin, onLogout, refreshProfile, showToast, 
               
               <div className="bg-slate-50 rounded-3xl p-6 mb-6 space-y-4 text-left">
                 <div>
-                  <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Your School Link</p>
+                  <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Student Portal</p>
                   <div className="flex items-center gap-2 bg-white p-3 rounded-xl border border-slate-200">
-                    <code className="text-xs font-bold text-slate-700 flex-1 truncate">
-                      {window.location.origin}/{registeredSchool.school_slug}
+                    <code className="text-xs font-bold text-slate-700 flex-1 break-all">
+                      exam-ple.xyz/{registeredSchool.school_slug}
                     </code>
                     <button 
                       onClick={() => {
-                        navigator.clipboard.writeText(`${window.location.origin}/${registeredSchool.school_slug}`);
+                        navigator.clipboard.writeText(`https://exam-ple.xyz/${registeredSchool.school_slug}`);
                         showToast("Link copied!", "success");
                       }}
-                      className="p-2 hover:bg-slate-50 rounded-lg text-nigeria-green"
+                      className="p-2 hover:bg-slate-100 rounded-lg text-nigeria-green flex-shrink-0"
+                    >
+                      <Copy className="w-4 h-4" />
+                    </button>
+                  </div>
+                </div>
+                <div>
+                  <p className="text-[10px] font-black text-orange-500 uppercase tracking-widest mb-1">Your Dashboard (save this!)</p>
+                  <div className="flex items-center gap-2 bg-orange-50 p-3 rounded-xl border border-orange-200">
+                    <code className="text-xs font-bold text-orange-700 flex-1 break-all">
+                      exam-ple.xyz/{registeredSchool.school_slug}/dashboard
+                    </code>
+                    <button 
+                      onClick={() => {
+                        navigator.clipboard.writeText(`https://exam-ple.xyz/${registeredSchool.school_slug}/dashboard`);
+                        showToast("Dashboard link copied!", "success");
+                      }}
+                      className="p-2 hover:bg-orange-100 rounded-lg text-orange-600 flex-shrink-0"
                     >
                       <Copy className="w-4 h-4" />
                     </button>
