@@ -6,10 +6,10 @@ npm install --legacy-peer-deps
 LOG_FILE="logs/github-sync.log"
 mkdir -p logs
 
-echo "Pushing to GitHub (origin/main)..."
+echo "Pushing to GitHub (origin/HEAD)..."
 
 set +e
-PUSH_OUTPUT=$(git push origin main 2>&1)
+PUSH_OUTPUT=$(git push origin HEAD 2>&1)
 PUSH_EXIT=$?
 set -e
 
@@ -38,7 +38,7 @@ if [ $PUSH_EXIT -ne 0 ]; then
   echo "$SAFE_OUTPUT"
 
   {
-    echo "[$TIMESTAMP] FAILURE — git push origin main failed (exit $PUSH_EXIT)"
+    echo "[$TIMESTAMP] FAILURE — git push origin HEAD failed (exit $PUSH_EXIT)"
     echo "$SAFE_OUTPUT"
     echo "---"
   } >> "$LOG_FILE"
@@ -75,7 +75,7 @@ if [ $PUSH_EXIT -ne 0 ]; then
 fi
 
 {
-  echo "[$TIMESTAMP] SUCCESS — git push origin main"
+  echo "[$TIMESTAMP] SUCCESS — git push origin HEAD"
   echo "---"
 } >> "$LOG_FILE"
 echo "Push to GitHub succeeded."
