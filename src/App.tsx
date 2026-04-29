@@ -2194,10 +2194,15 @@ function MainApp({ user, profile, onLogin, onLogout, refreshProfile, showToast, 
         });
         const data = await res.json();
         if (res.ok && data.success) {
-          const msg = data.alreadyProcessed
-            ? "Payment already applied to your account!"
-            : `${data.planName || 'Plan'} activated! ${data.credits ? `+${data.credits} credits added.` : ''}`;
-          showToast(msg, "success");
+          let msg: string;
+          if (data.testMode) {
+            msg = "Test payment received. Credits are not added in test mode — go live to activate subscriptions.";
+          } else if (data.alreadyProcessed) {
+            msg = "Payment already applied to your account!";
+          } else {
+            msg = `${data.planName || 'Plan'} activated! ${data.credits ? `+${data.credits} credits added.` : ''}`;
+          }
+          showToast(msg, data.testMode ? "info" : "success");
         } else {
           showToast("Payment received — credits will update shortly.", "success");
         }

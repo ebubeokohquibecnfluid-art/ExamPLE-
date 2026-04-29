@@ -422,13 +422,24 @@ app.post("/api/payments/verify", async (req, res) => {
 
   if (!PAYSTACK_SECRET) return res.status(500).json({ error: "Paystack not configured" });
 
+  // Test-mode gate: test keys are accepted but credits are NOT allocated.
+  // This lets you verify the full payment UI flow without adding fake credits.
+  // Set PAYMENT_LIVE_MODE=true in your secrets when you switch to live keys.
+  const isLiveMode = process.env.PAYMENT_LIVE_MODE === 'true';
+  const isTestKey = PAYSTACK_SECRET.startsWith('sk_test_');
+  if (isTestKey && !isLiveMode) {
+    console.log(`[test-mode] Payment reference ${reference} received — credits NOT allocated (test key, live mode off)`);
+    return res.json({ success: true, testMode: true, planName: 'Test', credits: 0 });
+  }
+
   try {
     const verify = await axios.get(
-      `https://api.paystack.co/transaction/verify/${encodeURIComponent(String(reference))}`,
+      `https://api.paystack.co/transaction/verify/${String(reference)}`,
       { headers: { Authorization: `Bearer ${PAYSTACK_SECRET}` } }
     );
     const txn = verify.data?.data;
     if (!txn || txn.status !== 'success') {
+      console.error("Paystack txn not success:", txn?.status, txn?.gateway_response);
       return res.status(402).json({ error: "Payment not confirmed by Paystack" });
     }
 
@@ -442,8 +453,9 @@ app.post("/api/payments/verify", async (req, res) => {
     await processPayment({ reference: String(reference), userId: uid, userEmail: email, planName, creditAmount: creditAmt, totalAmount: totalAmt });
     return res.json({ success: true, planName, credits: creditAmt, amount: totalAmt });
   } catch (err: any) {
-    console.error("Payment verify error:", err?.message || err);
-    return res.status(500).json({ error: "Verification failed" });
+    const paystackMsg = err?.response?.data?.message || err?.message || err;
+    console.error("Payment verify error:", paystackMsg);
+    return res.status(500).json({ error: "Verification failed", detail: paystackMsg });
   }
 });
 
