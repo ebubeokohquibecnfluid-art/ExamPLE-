@@ -2787,29 +2787,29 @@ function MainApp({ user, profile, onLogin, onLogout, refreshProfile, showToast, 
         {profile?.school?.header_image_url && (
           <div className="absolute inset-0 bg-black/45" aria-hidden="true" />
         )}
-        <div className="flex items-center gap-3 relative z-10">
+        <div className="flex items-center gap-3 relative z-10 min-w-0 flex-1">
           {profile?.school?.logo_url ? (
             <img
               src={profile.school.logo_url}
               alt={profile.school.school_name}
-              className="w-10 h-10 rounded-full object-cover bg-white/20"
+              className="w-10 h-10 rounded-full object-cover bg-white/20 flex-shrink-0"
               onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
             />
           ) : (
-            <div className="bg-white/20 p-2 rounded-full">
+            <div className="bg-white/20 p-2 rounded-full flex-shrink-0">
               <GraduationCap className="w-6 h-6" />
             </div>
           )}
-          <div>
-            <h1 className="text-lg font-bold leading-tight">
+          <div className="min-w-0">
+            <h1 className="text-lg font-bold leading-tight truncate">
               {profile?.school?.school_name || 'ExamPLE'}
             </h1>
-            <p className="text-[10px] opacity-90 font-medium uppercase tracking-wider">
+            <p className="text-[10px] opacity-90 font-medium uppercase tracking-wider truncate">
               {profile?.school?.tagline || (schoolName ? `Powered by ${schoolName}` : 'AI Tutor')}
             </p>
           </div>
         </div>
-        <div className="flex items-center gap-3 relative z-10">
+        <div className="flex items-center gap-2 relative z-10 flex-shrink-0 ml-2">
           {user && (
             <button 
               onClick={() => setShowTopUp(true)}
@@ -2827,6 +2827,16 @@ function MainApp({ user, profile, onLogin, onLogout, refreshProfile, showToast, 
           >
             <Settings className="w-5 h-5" />
           </button>
+
+          {user && (
+            <button
+              onClick={onLogout}
+              className="p-2 hover:bg-white/10 rounded-full transition-all"
+              title="Log out"
+            >
+              <LogOut className="w-5 h-5" />
+            </button>
+          )}
 
           {!user && (
             <button 
