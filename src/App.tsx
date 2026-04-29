@@ -916,6 +916,8 @@ function SchoolDashboard({ showToast }: { showToast: (msg: string, type?: 'succe
   const headerInputRef = useRef<HTMLInputElement>(null);
   const [migrationRequests, setMigrationRequests] = useState<any[]>([]);
   const [decidingId, setDecidingId] = useState<string | null>(null);
+  const [paymentHistory, setPaymentHistory] = useState<any[]>([]);
+  const [loadingPayments, setLoadingPayments] = useState(false);
 
   const fetchDashboard = async () => {
     try {
@@ -949,11 +951,28 @@ function SchoolDashboard({ showToast }: { showToast: (msg: string, type?: 'succe
     }
   };
 
+  const fetchPaymentHistory = async () => {
+    const savedPwd = localStorage.getItem(`school_pwd_${school_slug}`) || '';
+    if (!school_slug || !savedPwd) return;
+    setLoadingPayments(true);
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/payments/school/${school_slug}`, {
+        headers: { 'x-school-password': savedPwd }
+      });
+      if (res.ok) {
+        const result = await res.json();
+        setPaymentHistory(result.payments || []);
+      }
+    } catch { /* silent */ }
+    finally { setLoadingPayments(false); }
+  };
+
   useEffect(() => {
     const savedAuth = localStorage.getItem(`school_auth_${school_slug}`);
     if (savedAuth === 'true') {
       setIsLoggedIn(true);
       fetchDashboard();
+      fetchPaymentHistory();
     } else {
       setLoading(false);
     }
@@ -983,6 +1002,7 @@ function SchoolDashboard({ showToast }: { showToast: (msg: string, type?: 'succe
         localStorage.setItem(`school_pwd_${school_slug}`, password);
         setLoading(true);
         fetchDashboard();
+        fetchPaymentHistory();
       } else {
         showToast("Invalid password", "error");
       }
@@ -1378,8 +1398,66 @@ function SchoolDashboard({ showToast }: { showToast: (msg: string, type?: 'succe
         <div className="bg-white p-6 rounded-[32px] border border-slate-200 shadow-sm">
           <h3 className="text-sm font-black text-slate-900 mb-2">Revenue Share</h3>
           <p className="text-xs text-slate-500 leading-relaxed">
-            You earn <span className="text-nigeria-green font-bold">40%</span> of every student subscription. Payments are processed automatically.
+            You earn <span className="text-nigeria-green font-bold">40%</span> of every student subscription automatically. The remaining 60% goes to ExamPLE. Payments are recorded with full details below.
           </p>
+          <div className="mt-3 grid grid-cols-2 gap-3">
+            <div className="bg-green-50 rounded-2xl p-3 text-center">
+              <p className="text-[10px] font-black text-green-600 uppercase tracking-widest">Your Share</p>
+              <p className="text-lg font-black text-green-700">40%</p>
+            </div>
+            <div className="bg-slate-50 rounded-2xl p-3 text-center">
+              <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Platform</p>
+              <p className="text-lg font-black text-slate-600">60%</p>
+            </div>
+          </div>
+        </div>
+
+        {/* Payment History */}
+        <div className="bg-white rounded-[32px] border border-slate-200 shadow-sm overflow-hidden">
+          <div className="p-6 border-b border-slate-100 flex items-center justify-between">
+            <div>
+              <h3 className="text-sm font-black text-slate-900">Payment History</h3>
+              <p className="text-[10px] text-slate-400 mt-0.5">All subscriptions paid by your students</p>
+            </div>
+            <button
+              onClick={fetchPaymentHistory}
+              disabled={loadingPayments}
+              className="text-[10px] font-black text-nigeria-green uppercase tracking-widest hover:underline disabled:opacity-50"
+            >
+              {loadingPayments ? 'Loading…' : 'Refresh'}
+            </button>
+          </div>
+          {loadingPayments ? (
+            <div className="flex justify-center py-8">
+              <Loader2 className="w-5 h-5 text-nigeria-green animate-spin" />
+            </div>
+          ) : paymentHistory.length === 0 ? (
+            <div className="py-10 text-center">
+              <p className="text-sm text-slate-400">No payments recorded yet</p>
+              <p className="text-[10px] text-slate-300 mt-1">Payments will appear here as students subscribe</p>
+            </div>
+          ) : (
+            <div className="divide-y divide-slate-100">
+              {paymentHistory.map((p: any, i: number) => (
+                <div key={p.reference || i} className="px-6 py-4">
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0">
+                      <p className="text-sm font-bold text-slate-800 truncate">{p.userName || p.user_name}</p>
+                      <p className="text-[10px] text-slate-400 truncate">{p.userEmail || p.user_email}</p>
+                      <p className="text-[10px] text-slate-500 mt-0.5">
+                        {p.planName || p.plan_name} Plan · {new Date(p.timestamp).toLocaleDateString('en-NG', { day:'numeric', month:'short', year:'numeric' })}
+                      </p>
+                    </div>
+                    <div className="text-right flex-shrink-0">
+                      <p className="text-sm font-black text-slate-700">₦{Number(p.totalAmount ?? p.total_amount).toLocaleString()}</p>
+                      <p className="text-[10px] font-bold text-nigeria-green">+₦{Number(p.schoolShare ?? p.school_share).toLocaleString()} yours</p>
+                      <p className="text-[10px] text-slate-400">₦{Number(p.platformShare ?? p.platform_share).toLocaleString()} platform</p>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
 
         {/* Referral Section */}

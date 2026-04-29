@@ -273,39 +273,167 @@ app.post("/api/payments/initialize", async (req, res) => {
   } catch (err) { res.status(500).json({ error: "Payment failed" }); }
 });
 
+// Shared helper: record a verified payment, allocate credits, split revenue
+async function processPayment(opts: {
+  reference: string;
+  userId: string;
+  userEmail: string;
+  planName: string;
+  creditAmount: number;
+  totalAmount: number; // naira
+}) {
+  if (!db) throw new Error("DB missing");
+  const { reference, userId, userEmail, planName, creditAmount, totalAmount } = opts;
+
+  // Idempotency — skip if already processed
+  const existing = await db.get("SELECT id FROM payments WHERE reference = ?", [reference]);
+  if (existing) return;
+
+  // Fetch user details
+  const user = await db.get(
+    "SELECT displayname, schoolId FROM users WHERE uid = ?",
+    [userId]
+  );
+  const userName = user?.displayname || userEmail;
+  const schoolId = user?.schoolId || null;
+
+  // Fetch school details if applicable
+  let schoolName: string | null = null;
+  let schoolShare = 0;
+  let platformShare = totalAmount;
+
+  if (schoolId) {
+    const school = await db.get(
+      "SELECT school_name FROM schools WHERE school_id = ?",
+      [schoolId]
+    );
+    schoolName = school?.school_name || null;
+    schoolShare = Math.round(totalAmount * 0.40 * 100) / 100;
+    platformShare = Math.round((totalAmount - schoolShare) * 100) / 100;
+  }
+
+  // 1. Add credits and set 30-day expiry
+  const expiry = new Date();
+  expiry.setDate(expiry.getDate() + 30);
+  await db.run(
+    "UPDATE users SET credits = credits + ?, expiry_date = ? WHERE uid = ?",
+    [creditAmount, expiry.toISOString(), userId]
+  );
+
+  // 2. Credit school's earnings
+  if (schoolId && schoolShare > 0) {
+    await db.run(
+      "UPDATE schools SET total_earnings = total_earnings + ? WHERE school_id = ?",
+      [schoolShare, schoolId]
+    );
+  }
+
+  // 3. Store detailed payment record
+  const now = new Date().toISOString();
+  await db.run(
+    `INSERT INTO payments (reference, user_id, user_name, user_email, plan_name, total_amount, platform_share, school_share, school_id, school_name, timestamp)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+     ON CONFLICT (reference) DO NOTHING`,
+    [reference, userId, userName, userEmail, planName, totalAmount, platformShare, schoolShare, schoolId, schoolName, now]
+  );
+
+  // 4. Activity log
+  await db.run(
+    "INSERT INTO activity (type, details, timestamp) VALUES (?, ?, ?)",
+    ['payment', JSON.stringify({ reference, userId, userName, userEmail, planName, totalAmount, platformShare, schoolShare, schoolId, schoolName }), now]
+  );
+
+  console.log(`✅ Payment recorded: ${reference} | ${userName} | ₦${totalAmount} | school: ${schoolName || 'independent'} | platform: ₦${platformShare} | school: ₦${schoolShare}`);
+}
+
 app.get("/payment-success", async (req, res) => {
-  const { demo, userId, credits, amount } = req.query;
-  const creditAmount = Number(credits);
-  const payAmount = Number(amount);
-  
-  if (demo === "true" && userId && creditAmount && db) {
+  const { demo, userId, credits, amount, reference } = req.query;
+  const distPath = path.join(process.cwd(), "dist");
+
+  // --- DEMO MODE ---
+  if (demo === "true" && userId && credits && amount && db) {
     try {
-      const expiry = new Date();
-      expiry.setDate(expiry.getDate() + 30);
-      const expiryStr = expiry.toISOString();
-
-      await db.run("UPDATE users SET credits = credits + ?, expiry_date = ? WHERE uid = ?", [creditAmount, expiryStr, userId]);
-
-      // Revenue Sharing (40% to school)
-      const user = await db.get("SELECT schoolId FROM users WHERE uid = ?", [userId]);
-      if (user && user.schoolId) {
-        const schoolComm = payAmount * 0.4;
-        await db.run("UPDATE schools SET total_earnings = total_earnings + ? WHERE school_id = ?", [schoolComm, user.schoolId]);
-      }
-
-      // Log activity
-      await db.run("INSERT INTO activity (type, details, timestamp) VALUES (?, ?, ?)", [
-        'payment',
-        JSON.stringify({ userId, amount: payAmount, credits: creditAmount }),
-        new Date().toISOString()
-      ]);
+      await processPayment({
+        reference: `demo_${userId}_${Date.now()}`,
+        userId: String(userId),
+        userEmail: 'demo@example.com',
+        planName: 'Demo',
+        creditAmount: Number(credits),
+        totalAmount: Number(amount),
+      });
     } catch (err) {
-      console.error("payment-success DB error:", err);
-      return res.status(500).json({ error: "Payment recording failed" });
+      console.error("Demo payment error:", err);
+    }
+    return res.sendFile(path.join(distPath, "index.html"));
+  }
+
+  // --- LIVE PAYSTACK MODE ---
+  if (reference && PAYSTACK_SECRET && db) {
+    try {
+      const verify = await axios.get(
+        `https://api.paystack.co/transaction/verify/${encodeURIComponent(String(reference))}`,
+        { headers: { Authorization: `Bearer ${PAYSTACK_SECRET}` } }
+      );
+      const txn = verify.data?.data;
+      if (txn && txn.status === 'success') {
+        const meta = txn.metadata || {};
+        const uid = meta.userId || meta.user_id;
+        const planName = meta.planName || meta.plan_name || 'Unknown';
+        const creditAmt = Number(meta.credits) || PLAN_UNITS[planName] || 0;
+        const totalAmt = txn.amount / 100; // kobo → naira
+        const email = txn.customer?.email || '';
+        if (uid) {
+          await processPayment({
+            reference: String(reference),
+            userId: uid,
+            userEmail: email,
+            planName,
+            creditAmount: creditAmt,
+            totalAmount: totalAmt,
+          });
+        }
+      }
+    } catch (err: any) {
+      console.error("Paystack verify error:", err?.message || err);
     }
   }
-  const distPath = path.join(process.cwd(), "dist");
-  res.sendFile(path.join(distPath, "index.html"));
+
+  return res.sendFile(path.join(distPath, "index.html"));
+});
+
+// Payment history for a school dashboard (school students only)
+app.get("/api/payments/school/:school_slug", async (req, res) => {
+  const { school_slug } = req.params;
+  const pwd = req.headers['x-school-password'] as string;
+  if (!db || !school_slug || !pwd) return res.status(400).json({ error: "Missing data" });
+  try {
+    const school = await db.get("SELECT school_id, school_name, password FROM schools WHERE school_slug = ?", [school_slug]);
+    if (!school) return res.status(404).json({ error: "School not found" });
+    if (school.password !== pwd) return res.status(401).json({ error: "Invalid password" });
+    const rows = await db.all(
+      "SELECT reference, user_name, user_email, plan_name, total_amount, platform_share, school_share, timestamp FROM payments WHERE school_id = ? ORDER BY timestamp DESC LIMIT 100",
+      [school.schoolId || school.school_id]
+    );
+    res.json({ school_name: school.school_name, payments: rows });
+  } catch (err) { res.status(500).json({ error: "Query failed" }); }
+});
+
+// Admin: full payment ledger
+app.get("/api/admin/payments", async (req, res) => {
+  const secret = req.headers['x-admin-secret'] as string;
+  if (secret !== ADMIN_SECRET) return res.status(401).json({ error: "Unauthorized" });
+  if (!db) return res.status(500).json({ error: "DB missing" });
+  try {
+    const rows = await db.all(
+      "SELECT reference, user_name, user_email, plan_name, total_amount, platform_share, school_share, school_name, timestamp FROM payments ORDER BY timestamp DESC LIMIT 500",
+      []
+    );
+    const totals = await db.get(
+      "SELECT COALESCE(SUM(total_amount),0) AS total_revenue, COALESCE(SUM(platform_share),0) AS platform_total, COALESCE(SUM(school_share),0) AS school_total FROM payments",
+      []
+    );
+    res.json({ payments: rows, totals });
+  } catch (err) { res.status(500).json({ error: "Query failed" }); }
 });
 
 app.post("/ask-question", async (req, res) => {

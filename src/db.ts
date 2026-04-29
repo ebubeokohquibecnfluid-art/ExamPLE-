@@ -83,6 +83,28 @@ async function ensureSchema(): Promise<void> {
       key TEXT PRIMARY KEY,
       value REAL DEFAULT 0
     );
+    CREATE TABLE IF NOT EXISTS payments (
+      id SERIAL PRIMARY KEY,
+      reference TEXT UNIQUE,
+      user_id TEXT,
+      user_name TEXT,
+      user_email TEXT,
+      plan_name TEXT,
+      total_amount REAL,
+      platform_share REAL,
+      school_share REAL,
+      school_id TEXT,
+      school_name TEXT,
+      timestamp TEXT
+    );
+    ALTER TABLE payments ADD COLUMN IF NOT EXISTS reference TEXT;
+    ALTER TABLE payments ADD COLUMN IF NOT EXISTS user_name TEXT;
+    ALTER TABLE payments ADD COLUMN IF NOT EXISTS user_email TEXT;
+    ALTER TABLE payments ADD COLUMN IF NOT EXISTS plan_name TEXT;
+    ALTER TABLE payments ADD COLUMN IF NOT EXISTS platform_share REAL;
+    ALTER TABLE payments ADD COLUMN IF NOT EXISTS school_share REAL;
+    ALTER TABLE payments ADD COLUMN IF NOT EXISTS school_id TEXT;
+    ALTER TABLE payments ADD COLUMN IF NOT EXISTS school_name TEXT;
     CREATE TABLE IF NOT EXISTS exam_sessions (
       id TEXT PRIMARY KEY,
       user_id TEXT,
