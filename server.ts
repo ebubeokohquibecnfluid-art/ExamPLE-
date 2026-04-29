@@ -546,6 +546,7 @@ CRITICAL RULES — follow every one, every time:
       config: {
         systemInstruction,
         maxOutputTokens: 8192,
+        thinkingConfig: { thinkingBudget: 2048 },
       },
       contents: [{ role: "user", parts }],
     });
@@ -639,6 +640,18 @@ app.post("/get-audio", async (req, res) => {
       if (credits < 2) return res.status(403).json({ error: "Not enough credits for audio" });
     }
 
+    // Strip markdown and truncate to keep TTS fast
+    const cleanText = String(text || '')
+      .replace(/#{1,6}\s*/g, '')
+      .replace(/\*\*/g, '')
+      .replace(/\*/g, '')
+      .replace(/`{1,3}/g, '')
+      .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')
+      .replace(/\n{2,}/g, '. ')
+      .replace(/\n/g, ' ')
+      .trim()
+      .slice(0, 700);
+
     // Try each TTS model in order; fall back to the next if one fails
     let audioData: string | undefined;
     let lastError: unknown;
@@ -654,7 +667,7 @@ app.post("/get-audio", async (req, res) => {
           model,
           contents: [{ 
             parts: [{ 
-              text: `Say this exactly, but use a friendly, professional Nigerian teacher accent and rhythm: ${text}` 
+              text: `Say this exactly, but use a friendly, professional Nigerian teacher accent and rhythm: ${cleanText}` 
             }] 
           }],
           config: { 
