@@ -478,7 +478,8 @@ CRITICAL RULES — follow every one, every time:
 3. NEVER use LaTeX math delimiters. Do NOT wrap expressions in dollar signs. Write maths in plain text: use ^ for powers (x^2), * for multiply, / for divide, sqrt() for square roots. Example: write  x^2 + 5x + 6 = 0  NOT  $x^2 + 5x + 6 = 0$.
 4. Use markdown formatting: **bold** for key terms, bullet points for lists, numbered steps for working.
 5. Use relatable Nigerian examples where helpful (markets, naira, local foods, geography).
-6. ${tone}`;
+6. ${tone}
+7. COMPLETENESS IS MANDATORY: If a topic has a fixed number of parts (e.g. 3 Newton's Laws, 4 blood groups, 5 senses), you MUST cover every single one in the same response — never stop partway through a list. Always finish what you start.`;
 
 
     const parts: any[] = [];
@@ -498,6 +499,7 @@ CRITICAL RULES — follow every one, every time:
       config: {
         systemInstruction,
         thinkingConfig: { thinkingBudget: 0 },
+        maxOutputTokens: 8192,
       },
       contents: [{ role: "user", parts }],
     });
