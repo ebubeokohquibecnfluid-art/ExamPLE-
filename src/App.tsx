@@ -1989,7 +1989,17 @@ function MainApp({ user, profile, onLogin, onLogout, refreshProfile, showToast, 
   const startRecording = async () => {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      const mediaRecorder = new MediaRecorder(stream);
+      // Pick the best supported MIME type — Android Chrome often records ogg, not webm
+      const preferredTypes = [
+        'audio/webm;codecs=opus',
+        'audio/webm',
+        'audio/ogg;codecs=opus',
+        'audio/mp4',
+      ];
+      const chosenType = preferredTypes.find(t => MediaRecorder.isTypeSupported(t)) || '';
+      const mediaRecorder = chosenType
+        ? new MediaRecorder(stream, { mimeType: chosenType })
+        : new MediaRecorder(stream);
       mediaRecorderRef.current = mediaRecorder;
       audioChunksRef.current = [];
 
@@ -2000,7 +2010,8 @@ function MainApp({ user, profile, onLogin, onLogout, refreshProfile, showToast, 
       };
 
       mediaRecorder.onstop = async () => {
-        const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
+        // Use the recorder's actual mimeType so Gemini gets the correct format header
+        const audioBlob = new Blob(audioChunksRef.current, { type: mediaRecorder.mimeType || 'audio/webm' });
         const reader = new FileReader();
         reader.readAsDataURL(audioBlob);
         reader.onloadend = async () => {
@@ -2433,6 +2444,23 @@ function MainApp({ user, profile, onLogin, onLogout, refreshProfile, showToast, 
 
         await audio.play();
         setIsPlaying(true);
+      } else {
+        // Server TTS unavailable — fall back to browser speech synthesis
+        if ('speechSynthesis' in window) {
+          window.speechSynthesis.cancel();
+          const cleanText = text.replace(/#+\s/g, '').replace(/\*/g, '').slice(0, 500);
+          const utterance = new SpeechSynthesisUtterance(cleanText);
+          utterance.rate = 0.95;
+          utterance.pitch = 1.05;
+          utterance.onend = () => { setIsPlaying(false); setActiveAudioMessageId(null); };
+          utterance.onerror = () => { setIsPlaying(false); setActiveAudioMessageId(null); };
+          window.speechSynthesis.speak(utterance);
+          setIsPlaying(true);
+          setFallbackVoiceUsed(true);
+        } else {
+          setError(data.error || "Voice generation unavailable.");
+          setActiveAudioMessageId(null);
+        }
       }
     } catch (err: any) {
       console.error("Audio error:", err);

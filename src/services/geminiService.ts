@@ -59,7 +59,11 @@ export async function generateExplanation(request: ExplanationRequest) {
   return response.text;
 }
 
-export const TTS_MODELS = ["gemini-2.5-flash-preview-tts", "gemini-2.5-pro-preview-tts"];
+export const TTS_MODELS = [
+  "gemini-2.5-flash-preview-tts",
+  "gemini-2.5-pro-preview-tts",
+  "gemini-2.0-flash-exp",
+];
 export const TTS_RETRY_BASE_DELAY_MS = 500;
 
 export async function generateAudio(text: string, usePidgin: boolean) {

@@ -578,7 +578,12 @@ app.post("/register-school", async (req, res) => {
   const { school_name, password } = req.body;
   if (!school_name || !password || !db) return res.status(400).json({ error: "Missing data" });
   try {
-    const school_slug = school_name.toLowerCase().replace(/[^a-z0-9]+/g, '-');
+    const baseSlug = school_name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
+    let school_slug = baseSlug;
+    let counter = 2;
+    while (await db.get("SELECT 1 FROM schools WHERE school_slug = ?", [school_slug])) {
+      school_slug = `${baseSlug}-${counter++}`;
+    }
     const school_id = `sch_${Math.random().toString(36).substring(2, 9)}`;
     const referral_code = Math.random().toString(36).substring(2, 8).toUpperCase();
     await db.run("INSERT INTO schools (school_id, school_name, school_slug, referral_code, password) VALUES (?, ?, ?, ?, ?)", [school_id, school_name, school_slug, referral_code, password]);
