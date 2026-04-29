@@ -188,7 +188,7 @@ app.post("/api/auth/simple", async (req, res) => {
         [uid, 10, displayName || "Student", clientIp, trialExpiresAt]
       );
       newlyCreated = true;
-    } else if (displayName && !user.displayName) {
+    } else if (displayName && !user.displayname) {
       await db.run("UPDATE users SET displayname = ? WHERE uid = ?", [displayName, uid]);
     }
     const fresh = await db.get("SELECT * FROM users WHERE uid = ?", [uid]);
@@ -202,6 +202,16 @@ app.post("/api/auth/simple", async (req, res) => {
     }
     res.json({ ...fresh, school: schoolMeta, newlyCreated });
   } catch (err) { res.status(500).json({ error: "Auth failed" }); }
+});
+
+// Update a student's display name
+app.post("/api/user/update-name", async (req, res) => {
+  const { uid, displayName } = req.body;
+  if (!db || !uid || !displayName?.trim()) return res.status(400).json({ error: "Missing data" });
+  try {
+    await db.run("UPDATE users SET displayname = ? WHERE uid = ?", [displayName.trim(), uid]);
+    res.json({ success: true, displayName: displayName.trim() });
+  } catch (err) { res.status(500).json({ error: "Could not update name" }); }
 });
 
 // Save / update a student's email address (for payment receipts)

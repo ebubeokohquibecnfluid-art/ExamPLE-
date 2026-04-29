@@ -51,7 +51,8 @@ import {
   GitBranch,
   UserCheck,
   UserX,
-  UserPlus
+  UserPlus,
+  Pencil
 } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import { BrowserRouter, Routes, Route, useParams, useNavigate, Link } from 'react-router-dom';
@@ -1965,6 +1966,9 @@ function MainApp({ user, profile, onLogin, onLogout, refreshProfile, showToast, 
   const [showMigrationDialog, setShowMigrationDialog] = useState(false);
   const [migrationLoading, setMigrationLoading] = useState(false);
   const [migrationRequested, setMigrationRequested] = useState(false);
+  const [editingName, setEditingName] = useState(false);
+  const [newNameInput, setNewNameInput] = useState('');
+  const [nameUpdating, setNameUpdating] = useState(false);
 
   const [isRecording, setIsRecording] = useState(false);
   const [transcribing, setTranscribing] = useState(false);
@@ -2050,6 +2054,33 @@ function MainApp({ user, profile, onLogin, onLogout, refreshProfile, showToast, 
     if (mediaRecorderRef.current && isRecording) {
       mediaRecorderRef.current.stop();
       setIsRecording(false);
+    }
+  };
+
+  const handleNameUpdate = async () => {
+    if (!newNameInput.trim() || !userId || userId === 'guest') return;
+    setNameUpdating(true);
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/user/update-name`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ uid: userId, displayName: newNameInput.trim() }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        const updated = { ...user, displayName: data.displayName };
+        localStorage.setItem('exam_user', JSON.stringify(updated));
+        setUser(updated as any);
+        setEditingName(false);
+        setNewNameInput('');
+        showToast('Name updated!', 'success');
+      } else {
+        showToast('Could not update name.', 'error');
+      }
+    } catch {
+      showToast('Connection failed.', 'error');
+    } finally {
+      setNameUpdating(false);
     }
   };
 
@@ -3713,6 +3744,38 @@ function MainApp({ user, profile, onLogin, onLogout, refreshProfile, showToast, 
                         <Shield className="absolute -right-4 -bottom-4 w-24 h-24 text-white/5 -rotate-12" />
                       </div>
                     )}
+
+                    {/* Change Name */}
+                    {!editingName ? (
+                      <button
+                        onClick={() => { setNewNameInput(user.displayName || ''); setEditingName(true); }}
+                        className="w-full text-left text-xs text-slate-500 hover:text-nigeria-green font-semibold px-1 flex items-center gap-1 transition-colors"
+                      >
+                        <Pencil className="w-3 h-3" /> Change my name
+                      </button>
+                    ) : (
+                      <div className="flex gap-2">
+                        <input
+                          autoFocus
+                          type="text"
+                          value={newNameInput}
+                          onChange={e => setNewNameInput(e.target.value)}
+                          placeholder="Enter your real name"
+                          className="flex-1 bg-slate-50 border border-slate-200 rounded-2xl px-4 py-2 text-sm focus:ring-2 focus:ring-nigeria-green/20 focus:border-nigeria-green outline-none"
+                          onKeyDown={e => e.key === 'Enter' && handleNameUpdate()}
+                        />
+                        <button
+                          onClick={handleNameUpdate}
+                          disabled={nameUpdating || !newNameInput.trim()}
+                          className="bg-nigeria-green text-white px-4 rounded-2xl text-sm font-bold disabled:opacity-50 hover:bg-green-700 transition-all flex items-center gap-1"
+                        >
+                          {nameUpdating ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Save'}
+                        </button>
+                        <button onClick={() => setEditingName(false)} className="px-3 text-slate-400 hover:text-slate-600 text-sm">
+                          ✕
+                        </button>
+                      </div>
+                    )}
                   </>
                 )}
 
@@ -4356,7 +4419,7 @@ export default function App() {
       if (res.ok) {
         const data = await res.json();
         const displayCode = cleanCode.replace('USER_', '');
-        const newUser = { uid, displayName: data.displayName || "Student", email: `${uid}@example.com`, code: displayCode };
+        const newUser = { uid, displayName: data.displayname || data.displayName || "Student", email: `${uid}@example.com`, code: displayCode };
         
         localStorage.setItem('exam_uid', uid);
         localStorage.setItem('exam_user', JSON.stringify(newUser));
