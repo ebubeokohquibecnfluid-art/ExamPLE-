@@ -406,6 +406,47 @@ app.get("/payment-success", async (req, res) => {
   return res.sendFile(path.join(distPath, "index.html"));
 });
 
+// Frontend-callable payment verification — used by the SPA after Paystack redirect
+// (Vercel's catch-all intercepts GET /payment-success before it reaches the backend,
+//  so the SPA calls this API endpoint instead to actually verify and credit the user)
+app.post("/api/payments/verify", async (req, res) => {
+  const { reference, userId } = req.body;
+  if (!reference || !userId) return res.status(400).json({ error: "Missing reference or userId" });
+  if (!db) return res.status(500).json({ error: "DB unavailable" });
+
+  // Idempotency: if already processed, just return success without charging again
+  const existing = await db.get("SELECT plan_name FROM payments WHERE reference = ?", [reference]);
+  if (existing) {
+    return res.json({ success: true, alreadyProcessed: true, planName: existing.plan_name });
+  }
+
+  if (!PAYSTACK_SECRET) return res.status(500).json({ error: "Paystack not configured" });
+
+  try {
+    const verify = await axios.get(
+      `https://api.paystack.co/transaction/verify/${encodeURIComponent(String(reference))}`,
+      { headers: { Authorization: `Bearer ${PAYSTACK_SECRET}` } }
+    );
+    const txn = verify.data?.data;
+    if (!txn || txn.status !== 'success') {
+      return res.status(402).json({ error: "Payment not confirmed by Paystack" });
+    }
+
+    const meta = txn.metadata || {};
+    const uid = meta.userId || meta.user_id || userId;
+    const planName = meta.planName || meta.plan_name || 'Unknown';
+    const creditAmt = Number(meta.credits) || PLAN_UNITS[planName] || 0;
+    const totalAmt = txn.amount / 100;
+    const email = txn.customer?.email || '';
+
+    await processPayment({ reference: String(reference), userId: uid, userEmail: email, planName, creditAmount: creditAmt, totalAmount: totalAmt });
+    return res.json({ success: true, planName, credits: creditAmt, amount: totalAmt });
+  } catch (err: any) {
+    console.error("Payment verify error:", err?.message || err);
+    return res.status(500).json({ error: "Verification failed" });
+  }
+});
+
 // Payment history for a school dashboard (school students only)
 app.get("/api/payments/school/:school_slug", async (req, res) => {
   const { school_slug } = req.params;

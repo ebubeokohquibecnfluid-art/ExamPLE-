@@ -2168,15 +2168,47 @@ function MainApp({ user, profile, onLogin, onLogout, refreshProfile, showToast, 
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages, loading]);
 
-  // Handle Payment Success Redirect
+  // Handle Payment Success Redirect — two-step:
+  // Step 1 (mount): capture reference from URL immediately and clean up the URL
+  const pendingPaymentRef = useRef<string | null>(null);
   useEffect(() => {
-    if (window.location.pathname === '/payment-success') {
-      showToast("Payment successful! Your credits have been updated.", "success");
-      // Clean up the URL
-      window.history.replaceState({}, document.title, "/");
-      refreshProfile();
-    }
+    if (window.location.pathname !== '/payment-success') return;
+    const params = new URLSearchParams(window.location.search);
+    const ref = params.get('reference') || params.get('trxref');
+    if (ref) pendingPaymentRef.current = ref;
+    window.history.replaceState({}, document.title, '/');
   }, []);
+
+  // Step 2: once we have a real userId, call the verify endpoint to allocate credits
+  useEffect(() => {
+    if (!pendingPaymentRef.current || !userId || userId === 'guest') return;
+    const reference = pendingPaymentRef.current;
+    pendingPaymentRef.current = null; // prevent double-fire
+
+    const verifyPayment = async () => {
+      try {
+        const res = await fetch(`${API_BASE_URL}/api/payments/verify`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ reference, userId }),
+        });
+        const data = await res.json();
+        if (res.ok && data.success) {
+          const msg = data.alreadyProcessed
+            ? "Payment already applied to your account!"
+            : `${data.planName || 'Plan'} activated! ${data.credits ? `+${data.credits} credits added.` : ''}`;
+          showToast(msg, "success");
+        } else {
+          showToast("Payment received — credits will update shortly.", "success");
+        }
+      } catch {
+        showToast("Payment received — credits will update shortly.", "success");
+      } finally {
+        refreshProfile();
+      }
+    };
+    verifyPayment();
+  }, [userId]);
 
   // Initial credit check removed as we use Firestore onSnapshot in App component
 
