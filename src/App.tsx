@@ -1241,8 +1241,40 @@ function SchoolDashboard({ showToast }: { showToast: (msg: string, type?: 'succe
     );
   }
 
+  const dashboardLogoUrl = customLogo || data?.logo_url;
+
   return (
-    <div className="min-h-screen bg-[#F8FAFC] font-sans pb-12">
+    <div className="min-h-screen bg-[#F8FAFC] font-sans pb-12 relative">
+      {/* School logo watermark background */}
+      {dashboardLogoUrl && (
+        <div
+          aria-hidden="true"
+          style={{
+            position: 'fixed',
+            inset: 0,
+            zIndex: 0,
+            pointerEvents: 'none',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            overflow: 'hidden',
+          }}
+        >
+          <img
+            src={dashboardLogoUrl}
+            alt=""
+            style={{
+              width: '70vw',
+              maxWidth: '500px',
+              height: 'auto',
+              opacity: 0.07,
+              filter: 'grayscale(30%)',
+              userSelect: 'none',
+              draggable: false,
+            } as React.CSSProperties}
+          />
+        </div>
+      )}
       {/* Header */}
       <header className="bg-white border-b border-slate-200 px-6 py-4 flex items-center justify-between sticky top-0 z-20">
         <div className="flex items-center gap-3">
@@ -2396,8 +2428,40 @@ function MainApp({ user, profile, onLogin, onLogout, refreshProfile, showToast, 
 
   const fmtTime = (s: number) => `${String(Math.floor(s / 60)).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`;
 
+  const schoolLogoUrl = profile?.school?.logo_url;
+
   return (
-    <div className="flex flex-col h-screen bg-[#F0F2F5] font-sans overflow-hidden">
+    <div className="flex flex-col h-screen bg-[#F0F2F5] font-sans overflow-hidden relative">
+      {/* School logo watermark background */}
+      {schoolLogoUrl && (
+        <div
+          aria-hidden="true"
+          style={{
+            position: 'fixed',
+            inset: 0,
+            zIndex: 0,
+            pointerEvents: 'none',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            overflow: 'hidden',
+          }}
+        >
+          <img
+            src={schoolLogoUrl}
+            alt=""
+            style={{
+              width: '70vw',
+              maxWidth: '500px',
+              height: 'auto',
+              opacity: 0.07,
+              filter: 'grayscale(30%)',
+              userSelect: 'none',
+              draggable: false,
+            } as React.CSSProperties}
+          />
+        </div>
+      )}
       {/* Header */}
       <header
         className="text-white px-4 py-3 flex items-center justify-between shadow-md z-20"
