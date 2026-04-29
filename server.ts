@@ -1237,63 +1237,91 @@ app.post("/api/support/chat", async (req, res) => {
   const SCRIPTED: { pattern: RegExp; answer: string }[] = [
     {
       pattern: /\bschool.*regist|\bregist.*school|\bschool.*portal|\bown.*portal|\bpartner\b/i,
-      answer: `Schools can register on ExamPLE to get their own branded student portal.\n\nBenefits for schools:\n- A unique school link to share with students (exam-ple.xyz/your-school)\n- A referral code to onboard students\n- A dashboard to monitor student activity and performance\n- 40% of subscription revenue from your students\n\nTo register, tap the Settings icon inside the app and select "Register Your School".`
+      answer: `Schools can register on ExamPLE to get their own branded student portal.\n\nBenefits for schools:\n- A unique school link to share with students (exam-ple.xyz/your-school)\n- A referral code to onboard students directly\n- A full admin dashboard to monitor student activity, earnings, and manage your account\n- **40% of every subscription payment made by your students** — paid directly to your school\n- Customise your portal with your school logo, brand colour, tagline, and header image\n\nTo register, tap the Settings icon inside the app and select "Register Your School".`
     },
     {
       pattern: /\bschool.*dashboard|\bdashboard.*login|\bschool.*log.?in|\blog.?in.*school|\baccess.*dashboard|\bschool.*account\b/i,
-      answer: `To access your school dashboard:\n\n1. Visit exam-ple.xyz\n2. Tap the Settings icon (gear icon) in the top-right corner of the app\n3. Scroll down and tap "School Login"\n4. Enter your school's unique slug (the short name in your school link, e.g. "kings-college" from exam-ple.xyz/kings-college)\n5. Enter your school password (set during registration)\n6. Tap "Login" to access your dashboard\n\nFrom the dashboard, you can view student activity, monitor learning progress, and manage your school account.\n\nIf you have forgotten your password, tap "Forgot Password?" on the school login screen.`
+      answer: `To access your school dashboard:\n\n**Direct URL (fastest):**\nGo to exam-ple.xyz/your-school-slug/dashboard\n(e.g. exam-ple.xyz/kings-college/dashboard)\n\n**Via the app:**\n1. Open the app and tap the Settings icon (top-right)\n2. Scroll down and tap "School Login"\n3. Enter your school slug and password, then tap Login\n\nFrom the dashboard you can:\n- View all enrolled students and their activity\n- See your total earnings and payment history\n- Request withdrawals to your bank account\n- Approve or reject student migration requests\n- Customise your school portal (logo, colour, tagline, header image)\n- Manage bank account details\n\nIf you have forgotten your password, tap "Forgot Password?" on the school login screen.`
     },
     {
       pattern: /\bforgot.*school.*pass|\bschool.*forgot.*pass|\breset.*school.*pass|\bschool.*pass.*reset|\bschool.*password\b/i,
-      answer: `To reset your school password:\n\n1. Tap the Settings icon in the top-right corner of the app\n2. Scroll to "School Login" and tap it\n3. Tap "Forgot Password?" below the login form\n4. Enter your school's referral code (provided when you registered)\n5. Enter and confirm your new password\n6. Tap "Reset Password"\n\nYour referral code was shared with you when your school was first registered. If you have lost it, please contact ExamPLE support for assistance.`
+      answer: `To reset your school password:\n\n1. Go to exam-ple.xyz/your-school-slug/dashboard (or tap Settings → School Login in the app)\n2. Tap "Forgot Password?" below the login form\n3. Enter your school's referral code (provided when you first registered)\n4. Enter and confirm your new password\n5. Tap "Reset Password"\n\nYour referral code was given to you when your school was first registered on ExamPLE. If you cannot find it, please contact ExamPLE support for assistance.`
+    },
+    {
+      pattern: /\bschool.*earn|\bschool.*revenue|\bschool.*pay|\bwithdraw|\bbank.*detail|\bschool.*money\b/i,
+      answer: `Schools on ExamPLE earn 40% of every subscription payment made by their enrolled students.\n\n**How it works:**\n- When a student linked to your school buys a credit plan, 40% goes to your school's balance automatically\n- Independent students (not linked to any school) do not generate school earnings\n- Your earnings are visible on the school dashboard under "Earnings"\n\n**To withdraw your earnings:**\n1. Log into your dashboard at exam-ple.xyz/your-school-slug/dashboard\n2. Add your bank account details (Bank name, Account number, Account name)\n3. Enter the withdrawal amount and tap "Request Withdrawal"\n4. The ExamPLE team will process the transfer to your account\n\nNote: You must have saved your bank details before you can submit a withdrawal request.`
+    },
+    {
+      pattern: /\bschool.*custom|\bcustom.*school|\blogo.*school|\bschool.*logo|\bschool.*branding|\bschool.*colour|\bschool.*color\b/i,
+      answer: `Schools can fully customise their student portal on ExamPLE:\n\n- **Logo:** Upload your school crest or logo — it appears as a watermark on student screens and in the dashboard\n- **Brand colour:** Set your school's primary colour to theme the portal\n- **Tagline:** Add a school motto or welcome message shown to students\n- **Header image:** Upload a banner/cover image displayed at the top of the student portal\n\nTo customise:\n1. Log into your school dashboard at exam-ple.xyz/your-school-slug/dashboard\n2. Tap the "Customise Portal" button\n3. Upload your logo and header image, choose your colour, and save\n\nChanges take effect immediately for all students who visit your school link.`
+    },
+    {
+      pattern: /\bmigration|\bstudent.*join.*school|\bjoin.*school|\blink.*school|\bswitch.*school\b/i,
+      answer: `Students who are already using ExamPLE as independent users can request to join a school.\n\n**For students:**\n1. Open the app and tap the Settings icon\n2. Enter your school's referral code in the "Join a School" field\n3. Tap "Request to Join"\n4. Your school administrator will review and approve your request\n5. Once approved, you are linked to the school automatically\n\n**For school administrators:**\nMigration requests from independent students appear in your dashboard under "Student Requests". You can approve or reject each request individually.\n\nNote: Once a student is linked to your school, their future subscription payments will contribute to your school's earnings.`
     },
     {
       pattern: /\bpast.?question|\bpast.?paper|\bprevious.*(question|exam)|\bold.*(question|exam)|\bquestion.*bank|\bpastq\b/i,
-      answer: `The Past Question Bank lets you practise with real past exam questions from WAEC, NECO, and JAMB.\n\nHow to use it:\n1. Tap the "Exam Mode" tab at the bottom of the app\n2. Switch the sub-tab at the top from "Practice Test" to "Past Questions"\n3. Select your subject\n4. Pick a year (2015 to 2024 available)\n5. Choose one of two modes:\n   - **Simulate Exam:** Timed, exam-condition experience — answers are hidden until you submit, just like the real thing\n   - **Similar to [Year]:** AI generates fresh questions in the style and difficulty of that year's paper\n6. Tap "Start" to begin\n\nYour score and performance are saved automatically to your Progress Tracker.`
+      answer: `The Past Question Bank lets you practise with real past exam questions from WAEC, NECO, and JAMB.\n\nHow to use it:\n1. Tap the "Exam Mode" tab at the bottom of the app\n2. Switch the sub-tab at the top from "Practice Test" to "Past Questions"\n3. Select your subject\n4. Pick a year (2015 to 2024 available)\n5. Choose one of two modes:\n   - **Simulate Exam:** Timed, exam-condition experience — answers are hidden until you submit, just like the real thing\n   - **Similar to [Year]:** AI generates fresh questions in the style and difficulty of that year's paper\n6. Tap "Start" to begin\n\nEach question costs 1 credit when starting the exam. Submitting and marking is free.\nYour score and performance are saved automatically to your Progress Tracker.`
     },
     {
       pattern: /\bpractice.*test|\bpractice.*mode|\bpractice.*exam|\bexam.*practice\b/i,
-      answer: `Practice Test mode generates AI-powered exam questions tailored to your chosen subject and level.\n\nHow to use it:\n1. Tap the "Exam Mode" tab at the bottom of the app\n2. Make sure the "Practice Test" sub-tab is selected (it is the default)\n3. Enter your subject (e.g. Mathematics, Biology, Government)\n4. Select your exam type — WAEC, NECO, or JAMB\n5. Choose the number of questions (up to 20) and the time limit\n6. Tap "Start Exam"\n\nAt the end, you will see your score, a breakdown of correct and incorrect answers, and explanations for each question. Your results are saved to your Progress Tracker automatically.`
+      answer: `Practice Test mode generates AI-powered exam questions tailored to your chosen subject and level.\n\nHow to use it:\n1. Tap the "Exam Mode" tab at the bottom of the app\n2. Make sure the "Practice Test" sub-tab is selected (it is the default)\n3. Enter your subject (e.g. Mathematics, Biology, Government)\n4. Select your exam type — WAEC, NECO, or JAMB\n5. Choose the number of questions (minimum 5, maximum 30) and the time limit\n6. Tap "Start Exam"\n\nCost: 1 credit per question when starting. Submitting and marking is free.\n\nAt the end, you will see your score, correct/incorrect answers with full explanations, and marking schemes. Your results are saved to your Progress Tracker automatically.`
     },
     {
       pattern: /\bexam.*mode|\bhow.*exam|\bstart.*exam|\bexam.*tab|\bexam.*feature|\btimed.*exam\b/i,
-      answer: `Exam Mode is where you practise under real exam conditions. It has two sub-modes:\n\n**Practice Test:**\nAI generates fresh questions for any subject you choose. Select your exam type (WAEC, NECO, or JAMB), the number of questions, and your time limit — then start immediately.\n\n**Past Questions:**\nPractise with real past exam questions. Pick a year between 2015 and 2024, then choose to either simulate the exact exam or get AI-generated questions in that year's style.\n\nTo get started, tap the "Exam Mode" tab at the bottom of the app.`
+      answer: `Exam Mode is where you practise under real exam conditions. It has two sub-modes:\n\n**Practice Test:**\nAI generates fresh questions for any subject you choose. Select your exam type (WAEC, NECO, or JAMB), number of questions (5–30), and your time limit — then start immediately.\n\n**Past Questions:**\nPractise with real past exam questions from 2015–2024. Pick a year, then choose to either simulate the exact exam or get AI-generated questions in that year's style.\n\n**Cost:** 1 credit per question when starting the exam. Submitting and viewing results is free.\n\nTo get started, tap the "Exam Mode" tab at the bottom of the app.`
     },
     {
       pattern: /\bprogress|\btrack.*progress|\bperformance|\bweak.*topic|\bmy.*score|\bmy.*result|\bsubject.*score\b/i,
-      answer: `The Progress Tracker shows you exactly how you are performing across all your subjects.\n\nWhat it displays:\n- **Subject scores:** Your average score for each subject you have practised\n- **Weak topics:** The specific topics within a subject where you need the most improvement\n- **Trend over time:** How your performance is changing as you study more\n\nHow to access it:\n1. Log into your ExamPLE account with your Student Code\n2. Tap the "Progress" tab at the bottom of the app\n\nYour tracker is updated automatically every time you complete an exam in Exam Mode. The more you practise, the more detailed your insights become.`
+      answer: `The Progress Tracker shows you exactly how you are performing across all your subjects.\n\nWhat it displays:\n- **Subject scores:** Your average score percentage for each subject you have practised\n- **Weak topics:** The specific topics within each subject where you need the most improvement\n- How your performance changes as you study more\n\nHow to access it:\n1. Log into your ExamPLE account with your Student Code\n2. Tap the "Progress" tab at the bottom of the app\n\nYour tracker is updated automatically every time you complete an exam in Exam Mode. Progress tracking is free — it does not use credits.`
     },
     {
       pattern: /\bai tutor|\bask.*question|\btutor|\bchat.*tab|\bwhat.*can.*ask|\bhow.*tutor\b/i,
-      answer: `The AI Tutor is ExamPLE's main learning feature — available 24 hours a day, 7 days a week.\n\nYou can:\n- **Ask any academic question** in any subject — Biology, Mathematics, English, Physics, Chemistry, Government, Literature, Economics, and more\n- **Get voice explanations** — tap the microphone icon to ask your question out loud and hear the answer read back to you\n- Receive step-by-step explanations written in a way that is easy to understand\n\nCredit usage:\n- Text question: 1 credit\n- Voice explanation: 2 credits\n\nTo use the AI Tutor, tap the "AI Tutor" tab at the bottom of the app after logging in.`
+      answer: `The AI Tutor is ExamPLE's core learning feature — available 24/7.\n\nWhat you can do:\n- **Ask any academic question** in any subject — Mathematics, Biology, English, Physics, Chemistry, Government, Literature, Economics, and more\n- **Upload an image** of a question from a textbook or exam paper and ask for help\n- **Ask in voice** — tap the microphone icon to speak your question and hear the answer read back to you\n- **Choose Pidgin mode** — toggle to receive explanations in Nigerian Pidgin English if you prefer\n\nCredit usage:\n- Text question: 1 credit\n- Voice explanation: 2 credits\n- Image upload with question: 1 credit\n\nTo use the AI Tutor, tap the "AI Tutor" tab at the bottom of the app after logging in.`
+    },
+    {
+      pattern: /\bpidgin|\bnaija.*language|\bnigerian.*english|\blanguage.*mode\b/i,
+      answer: `ExamPLE's AI Tutor supports Nigerian Pidgin English.\n\nTo switch to Pidgin mode:\n1. Open the AI Tutor tab\n2. Look for the language toggle at the top of the chat\n3. Switch it to "Pidgin"\n\nThe AI will then explain topics and answer questions in natural Nigerian Pidgin, making it easier and more relatable for students who think and learn better in Pidgin.\n\nYou can switch back to standard English at any time.`
+    },
+    {
+      pattern: /\bimage|\bphoto|\bpicture|\bupload.*question|\bscan.*question|\bcamera\b/i,
+      answer: `You can upload images of questions directly in the AI Tutor.\n\nHow to use it:\n1. Tap the "AI Tutor" tab\n2. Tap the image/attachment icon in the chat input\n3. Select a photo from your gallery or take a picture of a textbook question, exam paper, or any problem you need help with\n4. Add any extra context (e.g. "Solve this" or "Explain step by step") and send\n\nThe AI will analyse the image and provide a detailed explanation.\n\nImage questions cost 1 credit (same as text questions).`
     },
     {
       pattern: /\bvoice|\baudio|\bspeak|\bmicrophone|\blisten\b/i,
-      answer: `ExamPLE supports voice interactions in the AI Tutor.\n\nHow to use voice:\n1. Tap the "AI Tutor" tab\n2. Tap the microphone icon to speak your question\n3. The AI will process your question and read the answer back to you in audio\n\nVoice explanations cost 2 credits per interaction (compared to 1 credit for text questions). This is because voice uses additional AI processing to generate natural speech.\n\nVoice is great for studying while on the move or when you prefer to listen rather than read.`
+      answer: `ExamPLE supports full voice interactions in the AI Tutor.\n\nHow to use voice:\n1. Tap the "AI Tutor" tab\n2. Tap the microphone icon to speak your question\n3. The AI will process your spoken question and read the answer back to you in natural audio\n\nVoice explanations cost 2 credits per interaction (text questions cost 1 credit). The extra cost covers the AI voice generation that speaks the answer back to you.\n\nVoice is perfect for studying on the move, or when you prefer listening over reading.`
     },
     {
       pattern: /\bjoin\b|\bsign.?up\b|\bget started\b|\bcreate.*(account|profile)\b/i,
-      answer: `There are two ways to join ExamPLE:\n\n**Option 1 — Via your school:**\nIf your school uses ExamPLE, your school administrator will share a unique link (e.g. exam-ple.xyz/your-school-name). Visit that link and tap "Join" to be automatically connected to your school. Alternatively, open the Settings section inside the app and enter the referral code your school provided.\n\n**Option 2 — As an independent student:**\nYou do not need a school to use ExamPLE. Simply:\n1. Visit exam-ple.xyz\n2. Tap the green "Join" button at the top-right\n3. Select "New Student"\n4. Enter your name\n5. You will receive a unique 6-character Student Code immediately\n6. Save your code and begin learning\n\nNo school link or referral code is required for independent students.`
+      answer: `There are two ways to join ExamPLE:\n\n**Option 1 — Via your school:**\nIf your school uses ExamPLE, ask your school administrator for your school link (e.g. exam-ple.xyz/your-school-name) or referral code. Visit the school link and tap "Join" to be automatically connected, or enter the referral code inside Settings after signing up.\n\n**Option 2 — As an independent student:**\nNo school required. Simply:\n1. Visit exam-ple.xyz\n2. Tap the green "Join" button at the top-right\n3. Select "New Student"\n4. Enter your name\n5. You will receive a unique 6-character Student Code immediately\n6. Save your code — it is your login on any device\n\nBoth options give you full access to all ExamPLE features.`
     },
     {
       pattern: /\bforgot\b.*code|lost.*code|recover.*code|find.*code|code.*lost|can.*t.*log.*in|cannot.*log/i,
-      answer: `To recover your Student Code:\n\n1. On the login screen, tap "Returning Student"\n2. Tap "Lost your code?"\n3. Enter your full name\n   - If you joined independently: leave the school field blank\n   - If you joined through a school: also enter your school's slug (e.g. kings-college)\n4. Your code will be retrieved\n\nIf you are still unable to recover it, please contact your school administrator (if applicable) or reach out to ExamPLE support.`
+      answer: `To recover your Student Code:\n\n1. On the login screen, tap "Returning Student"\n2. Tap "Lost your code?"\n3. Enter the full name you registered with\n   - If you joined as an independent student: leave the school field blank\n   - If you joined through a school: also enter your school's slug (e.g. kings-college)\n4. Your code will be retrieved and displayed\n\nIf recovery does not work (e.g. name was entered differently when registering), please contact ExamPLE support.`
     },
     {
       pattern: /\bcredit|\bhow.*work|\bunit|\bcharge|\bcost\b/i,
-      answer: `Credits are the currency used across ExamPLE:\n\n- **Text question (AI Tutor):** 1 credit\n- **Voice explanation (AI Tutor):** 2 credits\n- **Exam Mode:** 1 credit per question (e.g. a 10-question exam costs 10 credits, a 20-question exam costs 20 credits)\n- **Submitting and marking your exam:** Free\n- **Progress Tracker:** Free\n\nNew students receive free starter credits when they join. Additional credits are purchased through one of the plans below:\n\n- Basic: ₦2,500 for 50 credits (30 days)\n- Premium: ₦4,500 for 100 credits (30 days)\n- Max: ₦6,500 for 250 credits (30 days)\n- Top-up: ₦500 for 10 credits (pay as you go)\n\nAll payments are processed securely via Paystack.`
+      answer: `Credits are the currency used across ExamPLE:\n\n- **AI Tutor text question:** 1 credit\n- **AI Tutor voice explanation:** 2 credits\n- **AI Tutor image question:** 1 credit\n- **Exam Mode:** 1 credit per question at the start (e.g. 10 questions = 10 credits)\n- **Submitting and marking your exam:** Free\n- **Progress Tracker:** Free\n\nNew students receive free starter credits when they join. Additional credits are purchased securely via Paystack:\n\n- Top-up: ₦500 for 10 credits (pay as you go)\n- Basic: ₦2,500 for 50 credits (valid 30 days)\n- Premium: ₦4,500 for 100 credits (valid 30 days)\n- Max: ₦6,500 for 250 credits (valid 30 days)\n\nYou will be asked to provide your email address when purchasing, so Paystack can send you a receipt.`
     },
     {
       pattern: /\bpric|\bplan|\bpay|\bsubscri|\bhow much\b/i,
-      answer: `ExamPLE offers the following credit plans, all paid securely via Paystack:\n\n- **Basic:** ₦2,500 for 50 credits (valid 30 days)\n- **Premium:** ₦4,500 for 100 credits (valid 30 days)\n- **Max:** ₦6,500 for 250 credits (valid 30 days)\n- **Top-up:** ₦500 for 10 credits (pay as you go, no expiry pressure)\n\nHow credits are used:\n- AI Tutor text question: 1 credit\n- AI Tutor voice explanation: 2 credits\n- Exam Mode: 1 credit per question when starting an exam\n- Submitting and marking: free\n- Progress Tracker: free\n\nTo purchase, tap the credit/buy button inside the app while logged in.`
+      answer: `ExamPLE offers the following credit plans, all paid securely via Paystack:\n\n- **Top-up:** ₦500 for 10 credits (pay as you go)\n- **Basic:** ₦2,500 for 50 credits (valid 30 days)\n- **Premium:** ₦4,500 for 100 credits (valid 30 days)\n- **Max:** ₦6,500 for 250 credits (valid 30 days)\n\nHow credits are used:\n- AI Tutor text/image question: 1 credit\n- AI Tutor voice explanation: 2 credits\n- Exam Mode: 1 credit per question to start (marking is free)\n- Progress Tracker: free\n\nYou will need to provide your email address at checkout to receive a payment receipt from Paystack. To purchase, tap the credit/buy button inside the app while logged in.`
+    },
+    {
+      pattern: /\bemail|\breceipt|\bpayment.*confirm|\bpaystack.*email\b/i,
+      answer: `When you make a payment on ExamPLE, Paystack sends a receipt to your email address.\n\nYou will be asked for your email address the first time you buy credits. It is only used for payment receipts — ExamPLE does not send marketing emails.\n\nIf you have already saved your email, it will be pre-filled on future purchases. You can check or update your saved email in the Settings section of the app.`
     },
     {
       pattern: /\bstudent.*code\b|\bwhat.*code|\bcode.*mean|\bmy.*code\b/i,
-      answer: `Your Student Code is a unique 6-character code assigned to you when you join ExamPLE (for example: AB3X7K).\n\nIt is how you log back into your account from any device — similar to a password.\n\nYou can find your code at any time by opening the Settings panel inside the app. Please save it somewhere safe, as losing it may make it harder to recover your account.`
+      answer: `Your Student Code is a unique 6-character code assigned to you when you join ExamPLE (for example: AB3X7K).\n\nIt is how you log back into your account from any device — treat it like a password.\n\nTo find your code at any time:\n1. Log in to the app\n2. Tap the Settings icon (top-right)\n3. Your code is displayed in the Account section\n\nSave it somewhere safe — in your notes app, a screenshot, or written down. If you lose it, you can try to recover it from the login screen using your name.`
+    },
+    {
+      pattern: /\bdelete.*account|\bclose.*account|\bremove.*account|\bdeactivate\b/i,
+      answer: `You can delete or deactivate your ExamPLE account from the Settings section.\n\n**Temporary deactivation:**\nHides your account. You can contact ExamPLE support to restore it later.\n\n**Permanent deletion:**\nCompletely removes all your data. This cannot be undone.\n\nTo do this:\n1. Tap the Settings icon inside the app\n2. Scroll to "Account" and tap "Delete Account"\n3. Choose Temporary or Permanent\n4. Confirm your choice\n\nIf you are linked to a school, your school administrator will no longer see your activity after deletion.`
     },
     {
       pattern: /\bwhat.*feature|\bwhat.*can.*do|\bwhat.*include|\bwhat.*offer|\btell.*me.*about\b/i,
-      answer: `ExamPLE is an AI-powered exam preparation platform built specifically for Nigerian students. Here is what it includes:\n\n**AI Tutor**\nAsk any academic question — in text or by voice — and get clear, step-by-step explanations instantly. Available 24/7.\n\n**Exam Mode**\nTwo ways to practise:\n- *Practice Test:* AI-generated questions for any subject, exam type (WAEC, NECO, JAMB), and time limit you choose\n- *Past Question Bank:* Real past questions from 2015 to 2024 — simulate the exact exam or practise questions in that year's style\n\nExam Mode costs 1 credit per question to start. Submitting and marking is free.\n\n**Progress Tracker**\nSee your scores per subject and your weakest topics so you know exactly where to focus your revision. Free to access.\n\n**Payments**\nSecure credit purchases via Paystack. Plans start from ₦500.\n\nVisit exam-ple.xyz to get started.`
+      answer: `ExamPLE is an AI-powered exam preparation platform built specifically for Nigerian students. Here is everything it includes:\n\n**AI Tutor** — available 24/7\n- Ask any academic question by text, voice, or image upload\n- Get step-by-step explanations in English or Nigerian Pidgin\n- Subjects: Mathematics, Biology, Physics, Chemistry, English, Government, Literature, Economics, and more\n- Text/image: 1 credit | Voice: 2 credits\n\n**Exam Mode**\n- *Practice Test:* AI-generated questions for any subject (WAEC, NECO, JAMB) — 1 credit per question\n- *Past Questions:* Real past questions from 2015–2024 — simulate the exact paper or practise in that year's style\n- Full marking schemes and explanations after every exam\n\n**Progress Tracker** — free\n- Subject-by-subject scores and weak topic identification\n- Updated automatically after every exam\n\n**Credit Plans** (via Paystack)\n- Top-up: ₦500/10 credits | Basic: ₦2,500/50 | Premium: ₦4,500/100 | Max: ₦6,500/250\n\n**For Schools**\n- Branded portal (exam-ple.xyz/your-school)\n- Full admin dashboard with student activity, payment history, and earnings\n- 40% revenue share from student subscriptions\n- Customisable logo, colour, tagline, and header image\n- Student migration request management\n\nVisit exam-ple.xyz to get started.`
     },
   ];
 
@@ -1306,34 +1334,36 @@ app.post("/api/support/chat", async (req, res) => {
   // --- AI fallback for all other questions ---
   const SYSTEM_INSTRUCTION = `You are the ExamPLE Support Assistant. ExamPLE is an AI-powered exam preparation platform for Nigerian students (Primary, Secondary, WAEC, NECO, JAMB).
 
-Respond in professional, clear English only. Do not use slang, pidgin, or informal phrases.
-
-Key facts about ExamPLE:
+Respond in professional, clear English only. Do not use slang, pidgin, or informal phrases. Keep answers concise and factual.
 
 FEATURES:
-1. AI Tutor — the main chat tab. Students ask any academic question by text (1 credit) or voice/microphone (2 credits) and receive instant AI explanations. Available 24/7.
-2. Exam Mode — two sub-modes accessible via a tab switcher:
-   a. Practice Test: AI generates fresh exam questions. Student picks subject, exam type (WAEC/NECO/JAMB), number of questions, and time limit.
-   b. Past Question Bank: Real past exam questions from 2015 to 2024. Student picks subject and year. Two options: "Simulate Exam" (timed, answers hidden until submit) or "Similar to [Year]" (AI generates questions in that year's style). Exam Mode is free — no credits needed.
-3. Progress Tracker — tracks subject scores and weak topics automatically after every exam. Free to access. Requires login.
+1. AI Tutor (main tab) — students ask academic questions by text (1 credit), voice/microphone (2 credits), or image upload (1 credit). Explanations are in English or Nigerian Pidgin (toggle in the app). Available 24/7.
+2. Exam Mode — two sub-modes:
+   a. Practice Test: AI generates fresh questions. Student picks subject, exam type (WAEC/NECO/JAMB), number of questions (5–30), and time limit. Costs 1 credit per question at the start. Submitting and marking is free.
+   b. Past Question Bank: Real past exam questions from 2015–2024. Pick subject and year. Two options: "Simulate Exam" (timed, answers hidden until submit) or "Similar to [Year]" (AI generates questions in that year's style). Also costs 1 credit per question to start.
+3. Progress Tracker — tracks subject scores and weak topics after every exam. Free to access. Requires login.
 
 ACCOUNT:
-- Students join at exam-ple.xyz — tap Join, select New Student, enter name, receive a 6-character Student Code instantly.
-- The Student Code is their login credential on any device. It must be saved safely.
-- Students can also join via a school link or referral code (optional).
+- Students join at exam-ple.xyz — tap Join, select New Student, enter name, receive a unique 6-character Student Code instantly.
+- The Student Code is their login on any device. Must be saved safely.
+- Students can also join via a school link (exam-ple.xyz/school-slug) or referral code.
 - Lost code recovery: tap "Returning Student" then "Lost your code?" on the login screen.
+- Account deletion (temporary or permanent) is available in Settings.
 
 CREDITS & PRICING:
-- Credits: AI Tutor text = 1 credit, AI Tutor voice = 2 credits, Exam Mode = 1 credit per question to start (submitting/marking is free), Progress Tracker = free.
+- AI Tutor text/image: 1 credit. AI Tutor voice: 2 credits. Exam Mode: 1 credit per question to start (marking is free). Progress Tracker: free.
 - New students receive free starter credits.
-- Plans (paid via Paystack): Basic ₦2,500/50 credits (30 days), Premium ₦4,500/100 credits (30 days), Max ₦6,500/250 credits (30 days), Top-up ₦500/10 credits (no expiry).
+- Plans (paid securely via Paystack): Top-up ₦500/10 credits, Basic ₦2,500/50 credits (30 days), Premium ₦4,500/100 credits (30 days), Max ₦6,500/250 credits (30 days).
+- An email address is required at checkout for Paystack to send a receipt.
 
 SCHOOLS:
-- Schools register to get a branded portal (exam-ple.xyz/school-slug), referral code, student activity dashboard, and 40% of student subscription revenue.
-- School login: Settings icon → School Login → enter slug + password.
-- School password reset: Settings → School Login → Forgot Password → enter referral code.
-
-Keep answers concise and factual.`;
+- Schools register to get: a branded portal (exam-ple.xyz/school-slug), a referral code, a full admin dashboard, and 40% of every subscription payment made by their enrolled students (60% goes to ExamPLE).
+- School dashboard URL: exam-ple.xyz/school-slug/dashboard (direct) or via Settings → School Login in the app.
+- Dashboard features: view enrolled students, earnings balance, payment history, withdrawal requests, student migration request approvals, bank account management, and portal customisation (logo, brand colour, tagline, header image).
+- Withdrawals: school must add bank details before requesting a withdrawal. ExamPLE team processes the transfer.
+- School password reset: go to school dashboard URL → Forgot Password → enter referral code.
+- Student migration: independent students can request to join a school via Settings → referral code. School admin approves or rejects from dashboard.
+- School portal customisation: logo (shown as watermark), brand colour, tagline, header image — all set from the dashboard.`;
 
   try {
     const response = await generateWithRetry({
