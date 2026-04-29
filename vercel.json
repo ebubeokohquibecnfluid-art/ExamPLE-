@@ -10,7 +10,6 @@
     { "source": "/school-login",         "destination": "https://exam-ple--bubeelyon.replit.app/school-login" },
     { "source": "/register-school",      "destination": "https://exam-ple--bubeelyon.replit.app/register-school" },
     { "source": "/request-withdrawal",   "destination": "https://exam-ple--bubeelyon.replit.app/request-withdrawal" },
-    { "source": "/uploads/:path*",       "destination": "https://exam-ple--bubeelyon.replit.app/uploads/:path*" },
     { "source": "/(.*)",                 "destination": "/index.html" }
   ]
 }

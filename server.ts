@@ -12,34 +12,19 @@ const app = express();
 const PORT = Number(process.env.PORT) || 5000;
 const ADMIN_SECRET = "exam-admin-2026";
 
-const UPLOADS_DIR = path.join(process.cwd(), "uploads", "logos");
-fs.mkdirSync(UPLOADS_DIR, { recursive: true });
-
-const logoStorage = multer.diskStorage({
-  destination: (_req, _file, cb) => cb(null, UPLOADS_DIR),
-  filename: (_req, file, cb) => {
-    const ext = path.extname(file.originalname).toLowerCase() || '.png';
-    cb(null, `logo_${Date.now()}${ext}`);
-  }
-});
+// Images are stored as base64 data URLs in PostgreSQL — no disk files,
+// so they survive republishes and never depend on the server's hostname.
+const memoryStorage = multer.memoryStorage();
 const uploadLogo = multer({
-  storage: logoStorage,
+  storage: memoryStorage,
   limits: { fileSize: 2 * 1024 * 1024 },
   fileFilter: (_req, file, cb) => {
     if (file.mimetype.startsWith('image/')) cb(null, true);
     else cb(new Error('Only image files are allowed'));
   }
 });
-
-const headerStorage = multer.diskStorage({
-  destination: (_req, _file, cb) => cb(null, UPLOADS_DIR),
-  filename: (_req, file, cb) => {
-    const ext = path.extname(file.originalname).toLowerCase() || '.jpg';
-    cb(null, `header_${Date.now()}${ext}`);
-  }
-});
 const uploadHeader = multer({
-  storage: headerStorage,
+  storage: memoryStorage,
   limits: { fileSize: 5 * 1024 * 1024 },
   fileFilter: (_req, file, cb) => {
     if (file.mimetype.startsWith('image/')) cb(null, true);
@@ -49,7 +34,6 @@ const uploadHeader = multer({
 
 // --- 1. CORS CONFIGURATION ---
 app.use(cors());
-app.use('/uploads', express.static(path.join(process.cwd(), 'uploads')));
 
 // --- 2. DEDICATED HEALTH CHECK ---
 app.get("/health", (req, res) => {
@@ -960,18 +944,18 @@ app.post("/api/schools/save-customization", async (req, res) => {
   } catch (err) { res.status(500).json({ error: "Customisation save failed" }); }
 });
 
-// Upload school logo
+// Upload school logo — stored as base64 data URL in PostgreSQL (survives republishes)
 app.post("/api/schools/upload-logo", uploadLogo.single('logo'), async (req: any, res) => {
   if (!req.file) return res.status(400).json({ error: "No file uploaded" });
-  const logoUrl = `${req.protocol}://${req.get('host')}/uploads/logos/${req.file.filename}`;
-  res.json({ success: true, logo_url: logoUrl });
+  const dataUrl = `data:${req.file.mimetype};base64,${req.file.buffer.toString('base64')}`;
+  res.json({ success: true, logo_url: dataUrl });
 });
 
-// Upload school header image
+// Upload school header image — stored as base64 data URL in PostgreSQL (survives republishes)
 app.post("/api/schools/upload-header", uploadHeader.single('header'), async (req: any, res) => {
   if (!req.file) return res.status(400).json({ error: "No file uploaded" });
-  const headerUrl = `${req.protocol}://${req.get('host')}/uploads/logos/${req.file.filename}`;
-  res.json({ success: true, header_image_url: headerUrl });
+  const dataUrl = `data:${req.file.mimetype};base64,${req.file.buffer.toString('base64')}`;
+  res.json({ success: true, header_image_url: dataUrl });
 });
 
 // Account deletion
