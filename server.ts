@@ -265,6 +265,7 @@ app.post("/api/students/recover-code", async (req, res) => {
 
 app.post("/api/payments/initialize", async (req, res) => {
   const { email, amount, userId, planName, callbackBase } = req.body;
+  if (!userId || !amount || !planName) return res.status(400).json({ error: "Missing required payment fields" });
   const credits = PLAN_UNITS[planName] || 0;
   // Use the domain the user is actually on — fallback to APP_URL env, then hardcoded custom domain
   const appBase = (callbackBase || process.env.APP_URL || 'https://exam-ple.xyz').replace(/\/$/, '');
@@ -274,6 +275,7 @@ app.post("/api/payments/initialize", async (req, res) => {
     return res.json({ status: true, data: { authorization_url: `${appBase}/payment-success?demo=true&userId=${userId}&credits=${credits}&amount=${amount}` } });
   }
   if (!PAYSTACK_SECRET) return res.status(500).json({ error: "Paystack not configured" });
+  if (!email) return res.status(400).json({ error: "Email is required to process payment" });
   try {
     const response = await axios.post("https://api.paystack.co/transaction/initialize", {
       email, 
@@ -1205,10 +1207,11 @@ app.post("/api/withdrawals/mark-paid", authenticateAdmin, async (req, res) => {
   const { withdrawal_id } = req.body;
   if (!db || !withdrawal_id) return res.status(400).json({ error: "Missing data" });
   try {
-    await db.run(
+    const result = await db.run(
       "UPDATE withdrawals SET status = 'approved', approved_at = ? WHERE id = ?",
       [new Date().toISOString(), withdrawal_id]
     );
+    if (result.changes === 0) return res.status(404).json({ error: "Withdrawal not found" });
     res.json({ success: true });
   } catch (err) { res.status(500).json({ error: "Approval failed" }); }
 });
