@@ -3706,19 +3706,48 @@ function MainApp({ user, profile, onLogin, onLogout, refreshProfile, showToast, 
                   <>
                     <div className="bg-slate-50 p-4 rounded-2xl flex items-center gap-3 mb-4">
                       {user.photoURL ? (
-                        <img src={user.photoURL} alt="User" className="w-10 h-10 rounded-full" />
+                        <img src={user.photoURL} alt="User" className="w-10 h-10 rounded-full flex-shrink-0" />
                       ) : (
-                        <div className="w-10 h-10 rounded-full bg-nigeria-green/10 flex items-center justify-center">
+                        <div className="w-10 h-10 rounded-full bg-nigeria-green/10 flex items-center justify-center flex-shrink-0">
                           <User className="w-6 h-6 text-nigeria-green" />
                         </div>
                       )}
-                      <div className="flex-1 overflow-hidden">
-                        <p className="text-sm font-bold text-slate-800 truncate">{user.displayName}</p>
-                        <div className="flex items-center gap-1">
+                      <div className="flex-1 min-w-0">
+                        {editingName ? (
+                          <div className="flex gap-2 items-center">
+                            <input
+                              autoFocus
+                              type="text"
+                              value={newNameInput}
+                              onChange={e => setNewNameInput(e.target.value)}
+                              placeholder="Your real name"
+                              className="flex-1 min-w-0 bg-white border border-nigeria-green/40 rounded-xl px-3 py-1.5 text-sm font-bold focus:ring-2 focus:ring-nigeria-green/20 focus:border-nigeria-green outline-none"
+                              onKeyDown={e => { if (e.key === 'Enter') handleNameUpdate(); if (e.key === 'Escape') setEditingName(false); }}
+                            />
+                            <button
+                              onClick={handleNameUpdate}
+                              disabled={nameUpdating || !newNameInput.trim()}
+                              className="bg-nigeria-green text-white px-3 py-1.5 rounded-xl text-xs font-bold disabled:opacity-50 flex-shrink-0"
+                            >
+                              {nameUpdating ? <Loader2 className="w-3 h-3 animate-spin" /> : 'Save'}
+                            </button>
+                            <button onClick={() => setEditingName(false)} className="text-slate-400 hover:text-slate-600 flex-shrink-0 text-lg leading-none">✕</button>
+                          </div>
+                        ) : (
+                          <button
+                            onClick={() => { setNewNameInput(user.displayName || ''); setEditingName(true); }}
+                            className="flex items-center gap-1.5 group text-left w-full"
+                            title="Tap to change name"
+                          >
+                            <p className="text-sm font-bold text-slate-800 truncate group-hover:text-nigeria-green transition-colors">{user.displayName}</p>
+                            <Pencil className="w-3 h-3 text-slate-400 group-hover:text-nigeria-green flex-shrink-0 transition-colors" />
+                          </button>
+                        )}
+                        <div className="flex items-center gap-1 mt-0.5">
                           <p className="text-[9px] font-black text-nigeria-green bg-green-50 px-1.5 py-0.5 rounded-md uppercase tracking-wider">{user.code || 'NO CODE'}</p>
                         </div>
                       </div>
-                      <button onClick={onLogout} className="p-2 hover:bg-red-50 text-red-500 rounded-xl transition-all">
+                      <button onClick={onLogout} className="p-2 hover:bg-red-50 text-red-500 rounded-xl transition-all flex-shrink-0">
                         <LogOut className="w-5 h-5" />
                       </button>
                     </div>
@@ -3742,38 +3771,6 @@ function MainApp({ user, profile, onLogin, onLogout, refreshProfile, showToast, 
                           <p className="text-[9px] text-slate-500 mt-2 italic">Save this code to login from any device.</p>
                         </div>
                         <Shield className="absolute -right-4 -bottom-4 w-24 h-24 text-white/5 -rotate-12" />
-                      </div>
-                    )}
-
-                    {/* Change Name */}
-                    {!editingName ? (
-                      <button
-                        onClick={() => { setNewNameInput(user.displayName || ''); setEditingName(true); }}
-                        className="w-full text-left text-xs text-slate-500 hover:text-nigeria-green font-semibold px-1 flex items-center gap-1 transition-colors"
-                      >
-                        <Pencil className="w-3 h-3" /> Change my name
-                      </button>
-                    ) : (
-                      <div className="flex gap-2">
-                        <input
-                          autoFocus
-                          type="text"
-                          value={newNameInput}
-                          onChange={e => setNewNameInput(e.target.value)}
-                          placeholder="Enter your real name"
-                          className="flex-1 bg-slate-50 border border-slate-200 rounded-2xl px-4 py-2 text-sm focus:ring-2 focus:ring-nigeria-green/20 focus:border-nigeria-green outline-none"
-                          onKeyDown={e => e.key === 'Enter' && handleNameUpdate()}
-                        />
-                        <button
-                          onClick={handleNameUpdate}
-                          disabled={nameUpdating || !newNameInput.trim()}
-                          className="bg-nigeria-green text-white px-4 rounded-2xl text-sm font-bold disabled:opacity-50 hover:bg-green-700 transition-all flex items-center gap-1"
-                        >
-                          {nameUpdating ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Save'}
-                        </button>
-                        <button onClick={() => setEditingName(false)} className="px-3 text-slate-400 hover:text-slate-600 text-sm">
-                          ✕
-                        </button>
                       </div>
                     )}
                   </>
