@@ -1970,6 +1970,7 @@ function MainApp({ user, profile, onLogin, onLogout, refreshProfile, showToast, 
   const [transcribing, setTranscribing] = useState(false);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
+  const recordingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // ── EXAM & PROGRESS STATE ──
   const [activeView, setActiveView] = useState<'chat' | 'exam' | 'progress'>('chat');
@@ -2026,6 +2027,15 @@ function MainApp({ user, profile, onLogin, onLogout, refreshProfile, showToast, 
 
       mediaRecorder.start();
       setIsRecording(true);
+
+      // Auto-stop after 30 seconds to keep audio payload manageable
+      recordingTimerRef.current = setTimeout(() => {
+        if (mediaRecorderRef.current && mediaRecorderRef.current.state === 'recording') {
+          mediaRecorderRef.current.stop();
+          setIsRecording(false);
+          showToast("Recording stopped (30 second limit).", "info");
+        }
+      }, 30000);
     } catch (err) {
       console.error("Error accessing microphone:", err);
       showToast("Could not access microphone. Please check permissions.", "error");
@@ -2033,6 +2043,10 @@ function MainApp({ user, profile, onLogin, onLogout, refreshProfile, showToast, 
   };
 
   const stopRecording = () => {
+    if (recordingTimerRef.current) {
+      clearTimeout(recordingTimerRef.current);
+      recordingTimerRef.current = null;
+    }
     if (mediaRecorderRef.current && isRecording) {
       mediaRecorderRef.current.stop();
       setIsRecording(false);
@@ -2041,19 +2055,29 @@ function MainApp({ user, profile, onLogin, onLogout, refreshProfile, showToast, 
 
   const handleTranscription = async (audioBase64: string) => {
     setTranscribing(true);
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 20000); // 20s hard limit
     try {
       const res = await fetch(`${API_BASE_URL}/api/transcribe`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ audioBase64 })
+        body: JSON.stringify({ audioBase64 }),
+        signal: controller.signal,
       });
       const data = await res.json();
       if (data.text) {
         setQuestion(prev => prev ? `${prev} ${data.text}` : data.text);
+      } else {
+        showToast("Couldn't hear that clearly. Please type your question.", "info");
       }
-    } catch (err) {
+    } catch (err: any) {
       console.error("Transcription error:", err);
+      const msg = err?.name === 'AbortError'
+        ? "Transcription timed out. Please type your question."
+        : "Voice input failed. Please type your question.";
+      showToast(msg, "error");
     } finally {
+      clearTimeout(timeout);
       setTranscribing(false);
     }
   };

@@ -535,7 +535,6 @@ CRITICAL RULES — follow every one, every time:
     const stream = await generateStreamWithRetry({
       config: {
         systemInstruction,
-        thinkingConfig: { thinkingBudget: 0 },
         maxOutputTokens: 8192,
       },
       contents: [{ role: "user", parts }],
