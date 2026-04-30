@@ -640,8 +640,8 @@ app.post("/get-audio", async (req, res) => {
       if (credits < 2) return res.status(403).json({ error: "Not enough credits for audio" });
     }
 
-    // Strip markdown and truncate to keep TTS fast
-    const cleanText = String(text || '')
+    // Strip markdown, then truncate at a sentence boundary to keep TTS fast
+    const stripped = String(text || '')
       .replace(/#{1,6}\s*/g, '')
       .replace(/\*\*/g, '')
       .replace(/\*/g, '')
@@ -649,8 +649,14 @@ app.post("/get-audio", async (req, res) => {
       .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')
       .replace(/\n{2,}/g, '. ')
       .replace(/\n/g, ' ')
-      .trim()
-      .slice(0, 700);
+      .trim();
+    const MAX_TTS_CHARS = 1000;
+    let cleanText = stripped;
+    if (stripped.length > MAX_TTS_CHARS) {
+      const cutoff = stripped.slice(0, MAX_TTS_CHARS);
+      const lastSentence = cutoff.search(/[.!?][^.!?]*$/);
+      cleanText = lastSentence > 0 ? cutoff.slice(0, lastSentence + 1) : cutoff;
+    }
 
     // Try each TTS model in order; fall back to the next if one fails
     let audioData: string | undefined;
